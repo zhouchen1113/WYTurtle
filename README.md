@@ -24,27 +24,6 @@ cmake/               CMake 查找模块和构建辅助脚本
 tools/               工具源码
 ```
 
-不应上传到 GitHub 的内容：
-
-```text
-build*/              CMake / Visual Studio 构建目录
-bin/                 本地编译输出
-out/ install/ dist/  本地安装或打包目录
-*.exe *.dll *.lib    编译产物和第三方二进制库
-*.pdb *.ilk *.obj    调试和中间文件
-*.log *.tmp          日志和临时文件
-个人 MySQL 数据目录
-个人服务端运行目录
-```
-
-`.gitignore` 已经覆盖这些常见本地生成物。提交前建议执行：
-
-```powershell
-git status --short
-```
-
-确认没有把个人环境、构建输出或运行数据误提交。
-
 ## Windows 编译环境
 
 推荐环境：
