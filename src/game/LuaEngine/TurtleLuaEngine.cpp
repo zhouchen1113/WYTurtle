@@ -2672,7 +2672,7 @@ int PlayerIsAlliance(lua_State* state)
 int PlayerGetTeam(lua_State* state)
 {
     Player* player = CheckPlayer(state, 1);
-    lua_pushinteger(state, player ? player->GetTeam() : 0);
+    lua_pushinteger(state, player ? player->GetTeamId() : 0);
     return 1;
 }
 
