@@ -66,6 +66,7 @@ E:\TurtleBY
 - Guild 兼容补齐：`GetMembers`、`SetLeader`、`SetBankTabText`、`SendPacket`、`SendPacketToRanked`、`Disband`、`AddMember`、`DeleteMember`、`SetMemberRank`、`SetName`、`UpdateMemberData`、`MassInviteToEvent`、`SwapItems`、`SwapItemsWithInventory`、`GetTotalBankMoney`、`GetCreatedDate`、`ResetTimes`、`ModifyBankMoney`。
 - WorldPacket 基础对象封装和包事件：`CreatePacket(opcode, size)` 现在返回 `WorldPacket` 对象，支持 opcode / size 查询、opcode 修改、基础整数/浮点/GUID/字符串读写；`Player`、`Group`、`Guild`、`WorldObject` 的 `SendPacket` 入口已经可以发送该对象；`RegisterPacketEvent(opcode, 5/7, function)` 已接入客户端入包和服务端出包拦截。
 - AddOn 消息事件：`RegisterServerEvent(30, function(event, sender, type, prefix, msg, target) end)` 已接入客户端插件消息，能在 Turtle 内置插件消息处理前拦截；`target` 可以是接收玩家、公会、队伍、频道 ID 或 `nil`。
+- Channel 基础对象封装：玩家频道聊天事件 `22` 现在按 3.3.5 Eluna 风格继续传频道数字 ID，并额外追加 `Channel` 对象；对象可读取频道名、频道 ID、人数、flags、安全等级、阵营、密码和成员状态，也能设置公告/密码/安全等级、设置成员主持/禁言、广播包或发送频道消息。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -269,7 +270,7 @@ RegisterPlayerEvent(18, function(event, player, message, chatType, language) end
 RegisterPlayerEvent(19, function(event, player, message, chatType, language, receiver) end)
 RegisterPlayerEvent(20, function(event, player, message, chatType, language, group) end)
 RegisterPlayerEvent(21, function(event, player, message, chatType, language, guild) end)
-RegisterPlayerEvent(22, function(event, player, message, chatType, language, channelName) end)
+RegisterPlayerEvent(22, function(event, player, message, chatType, language, channelId, channel) end)
 RegisterPlayerEvent(23, function(event, player, emote) end)
 RegisterPlayerEvent(24, function(event, player, textEmote, emoteNum, guid) end)
 RegisterPlayerEvent(25, function(event, player) end)
@@ -346,7 +347,7 @@ return "新的聊天内容"     -- 改写聊天内容
 - `19` 玩家发送密语前触发，参数是发送者、消息、聊天类型、语言和接收者玩家对象。返回 `false` 可以阻止发送，返回字符串可以改写密语内容。
 - `20` 玩家发送队伍、团队、团队领袖、团队警告、战场、战场领袖聊天前触发，参数里最后一个是 `Group` 对象。返回 `false` 可以阻止发送，返回字符串可以改写消息。
 - `21` 玩家发送公会或官员聊天前触发，参数里最后一个是 `Guild` 对象。返回 `false` 可以阻止发送，返回字符串可以改写消息。
-- `22` 玩家发送频道聊天前触发，参数里最后一个当前是频道名字符串，例如 `"World"`。3.3.5 Eluna 这里通常传频道 ID 或频道对象；Turtle 适配层暂时还没有 `Channel` Lua 封装，所以先传可用的频道名。返回 `false` 可以阻止发送，返回字符串可以改写消息。
+- `22` 玩家发送频道聊天前触发，第 6 个参数 `channelId` 是 3.3.5 Eluna 风格的频道数字；第 7 个参数是 Turtle 额外追加的 `Channel` 对象，需要频道名时用 `channel:GetName()` 或 `tostring(channel)`。返回 `false` 可以阻止发送，返回字符串可以改写消息。
 - `23` 玩家发送动作表情包 `CMSG_EMOTE` 时触发，参数是核心 emote 数字。当前 Turtle 客户端路径只允许核心已经硬编码的 `EMOTE_ONESHOT_NONE` 和 `EMOTE_ONESHOT_WAVE` 进入这条事件；聊天框 `/me 文本` 仍走 `18` 普通聊天里的 `CHAT_MSG_EMOTE`，普通目标文字表情继续走 `24`。
 - `24` 玩家文字表情，`guid` 是目标对象的 `ObjectGuid` 对象。需要低位数字时用 `guid:GetGUIDLow()`。
 - `25` 玩家保存前触发。内部加了重入保护，避免 Lua 回调里调用 `player:SaveToDB()` 后无限递归。
@@ -2149,6 +2150,51 @@ guild:ModifyBankMoney(amount, add)
 - `guild:ModifyBankMoney(amount, add)` 直接更新角色库 `guild_bank_money`。如果公会银行插件对象已经在内存中打开，界面刷新可能要等银行重新加载；真实运营脚本里谨慎使用。
 - `guild:SendPacket(packet)` 会向公会成员广播 `WorldPacket`；`guild:SendPacketToRanked(packet, rankId)` 会按公会 rank 发送。
 - `guild:MassInviteToEvent()`、`guild:SwapItems()`、`guild:SwapItemsWithInventory()`、`guild:ResetTimes()` 当前保留方法名兼容，Turtle 1.12 这份核心没有对应的 3.3.5 原生流程。
+
+## Channel 方法
+
+`RegisterPlayerEvent(22, ...)` 的第 7 个参数会返回当前频道对象；第 6 个参数仍是 3.3.5 Eluna 风格的频道数字 ID。
+
+```lua
+channel:GetName()
+channel:GetId()
+channel:GetChannelId()
+channel:GetChannelDBId()
+channel:IsValid()
+channel:IsConstant()
+channel:IsAnnounce()
+channel:SetAnnounce(enabled)
+channel:IsLevelRestricted()
+channel:IsLFG()
+channel:GetPassword()
+channel:SetPassword(password)
+channel:GetNumPlayers()
+channel:GetPlayerCount()
+channel:GetFlags()
+channel:HasFlag(flag)
+channel:GetSecurityLevel()
+channel:SetSecurityLevel(level)
+channel:GetTeam()
+channel:IsOn(playerOrGuid)
+channel:IsBanned(playerOrGuid)
+channel:GetPlayerFlags(playerOrGuid)
+channel:SetModerator(playerOrGuid, enabled)
+channel:SetMute(playerOrGuid, enabled)
+channel:SendPacket(packet, ignoredPlayerOrGuid)
+channel:SendToAll(packet, ignoredPlayerOrGuid)
+channel:SendToOne(packet, playerOrGuid)
+channel:Say(playerOrGuid, message, language, skipCheck)
+channel:SendMessage(playerOrGuid, message, language, skipCheck)
+```
+
+说明：
+
+- `tostring(channel)` 等同于 `channel:GetName()`，方便脚本临时把频道对象当频道名打印。
+- `GetChannelId()` 返回 Turtle DBC 频道 ID；自定义频道通常是 `0`。Turtle 1.12 没有 3.3.5 的自定义频道数据库 ID，所以 `GetChannelDBId()` 当前作为兼容别名也返回这个值。
+- `Channel` userdata 内部按频道名和阵营动态反查真实频道；如果频道已经被核心删除，`IsValid()` 返回 `false`，读取类接口返回 `0` / `false` / `nil`，修改和发送类接口不做操作。
+- `IsOn()`、`IsBanned()`、`GetPlayerFlags()`、`SetModerator()`、`SetMute()` 可传 `Player`、`ObjectGuid` 或玩家低位 GUID；设置主持/禁言只会作用于已经在频道里的玩家。
+- `SendPacket()` / `SendToAll()` 会向频道成员广播 `WorldPacket`；第二个参数可选，用来忽略某个玩家 GUID。`SendToOne()` 只发给指定玩家。
+- `Say()` / `SendMessage()` 走核心频道发言路径；`skipCheck=true` 会跳过频道成员和禁言检查，脚本里谨慎使用。
 
 ## Map 方法
 

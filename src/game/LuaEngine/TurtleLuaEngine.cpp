@@ -2,6 +2,8 @@
 
 #include "AccountMgr.h"
 #include "Chat.h"
+#include "Channel.h"
+#include "ChannelMgr.h"
 #include "AI/CreatureAI.h"
 #include "Config/Config.h"
 #include "Database/DatabaseEnv.h"
@@ -76,6 +78,7 @@ constexpr char const* SPELLTARGETS_METATABLE = "Turtle.SpellCastTargets";
 constexpr char const* WORLDPACKET_METATABLE = "Turtle.WorldPacket";
 constexpr char const* OBJECTGUID_METATABLE = "Turtle.ObjectGuid";
 constexpr char const* CHATHANDLER_METATABLE = "Turtle.ChatHandler";
+constexpr char const* CHANNEL_METATABLE = "Turtle.Channel";
 constexpr char const* ROLL_METATABLE = "Turtle.Roll";
 
 uint32 ToElunaChatType(uint32 type)
@@ -211,6 +214,13 @@ struct LuaObjectGuid
 struct LuaChatHandler
 {
     ObjectGuid playerGuid;
+};
+
+struct LuaChannel
+{
+    std::string name;
+    Team team = ALLIANCE;
+    uint32 channelId = 0;
 };
 
 struct LuaRoll
@@ -448,6 +458,22 @@ LuaChatHandler* CheckChatHandler(lua_State* state, int index)
     return static_cast<LuaChatHandler*>(luaL_checkudata(state, index, CHATHANDLER_METATABLE));
 }
 
+LuaChannel* CheckChannel(lua_State* state, int index)
+{
+    return static_cast<LuaChannel*>(luaL_checkudata(state, index, CHANNEL_METATABLE));
+}
+
+Channel* ResolveChannel(LuaChannel const* holder)
+{
+    if (!holder)
+        return nullptr;
+
+    if (ChannelMgr* mgr = channelMgr(holder->team))
+        return mgr->GetChannel(holder->name, nullptr, false);
+
+    return nullptr;
+}
+
 Player* GetChatHandlerPlayer(LuaChatHandler const* holder)
 {
     if (!holder || holder->playerGuid.IsEmpty())
@@ -463,6 +489,24 @@ void PushChatHandlerValue(lua_State* state, Player* player)
     holder->playerGuid = player ? player->GetObjectGuid() : ObjectGuid();
 
     luaL_getmetatable(state, CHATHANDLER_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void PushChannelValue(lua_State* state, Channel* channel)
+{
+    if (!channel)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    auto* holder = static_cast<LuaChannel*>(lua_newuserdata(state, sizeof(LuaChannel)));
+    new (holder) LuaChannel();
+    holder->name = channel->GetName();
+    holder->team = channel->GetTeam();
+    holder->channelId = channel->GetChannelId();
+
+    luaL_getmetatable(state, CHANNEL_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -1625,6 +1669,229 @@ int ChatHandlerHasSentErrorMessage(lua_State* state)
 
     lua_pushboolean(state, sent);
     return 1;
+}
+
+int ChannelGetName(lua_State* state)
+{
+    LuaChannel* holder = CheckChannel(state, 1);
+    if (holder)
+        lua_pushlstring(state, holder->name.c_str(), holder->name.size());
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int ChannelGetId(lua_State* state)
+{
+    LuaChannel* holder = CheckChannel(state, 1);
+    Channel* channel = ResolveChannel(holder);
+    lua_pushinteger(state, channel ? channel->GetChannelId() : (holder ? holder->channelId : 0));
+    return 1;
+}
+
+int ChannelIsValid(lua_State* state)
+{
+    lua_pushboolean(state, ResolveChannel(CheckChannel(state, 1)) != nullptr);
+    return 1;
+}
+
+int ChannelIsConstant(lua_State* state)
+{
+    LuaChannel* holder = CheckChannel(state, 1);
+    Channel* channel = ResolveChannel(holder);
+    lua_pushboolean(state, channel ? channel->IsConstant() : (holder && holder->channelId != 0));
+    return 1;
+}
+
+int ChannelIsAnnounce(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushboolean(state, channel && channel->IsAnnounce());
+    return 1;
+}
+
+int ChannelSetAnnounce(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    if (channel)
+        channel->SetAnnounce(lua_toboolean(state, 2) != 0);
+    return 0;
+}
+
+int ChannelIsLevelRestricted(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushboolean(state, channel && channel->IsLevelRestricted());
+    return 1;
+}
+
+int ChannelIsLFG(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushboolean(state, channel && channel->IsLFG());
+    return 1;
+}
+
+int ChannelGetPassword(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    if (!channel)
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    std::string const& password = channel->GetPassword();
+    lua_pushlstring(state, password.c_str(), password.size());
+    return 1;
+}
+
+int ChannelSetPassword(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    char const* password = luaL_checkstring(state, 2);
+    if (channel)
+        channel->SetPassword(password);
+    return 0;
+}
+
+int ChannelGetNumPlayers(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushinteger(state, channel ? channel->GetNumPlayers() : 0);
+    return 1;
+}
+
+int ChannelGetFlags(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushinteger(state, channel ? channel->GetFlags() : 0);
+    return 1;
+}
+
+int ChannelHasFlag(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    uint32 flag = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, channel && channel->HasFlag(static_cast<uint8>(flag)));
+    return 1;
+}
+
+int ChannelGetSecurityLevel(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    lua_pushinteger(state, channel ? channel->GetSecurityLevel() : 0);
+    return 1;
+}
+
+int ChannelSetSecurityLevel(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    uint32 securityLevel = static_cast<uint32>(luaL_checkinteger(state, 2));
+    if (channel)
+        channel->SetSecurityLevel(static_cast<uint8>(securityLevel));
+    return 0;
+}
+
+int ChannelGetTeam(lua_State* state)
+{
+    LuaChannel* holder = CheckChannel(state, 1);
+    Channel* channel = ResolveChannel(holder);
+    lua_pushinteger(state, channel ? channel->GetTeam() : (holder ? holder->team : TEAM_NONE));
+    return 1;
+}
+
+int ChannelIsOn(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushboolean(state, channel && channel->IsOn(guid));
+    return 1;
+}
+
+int ChannelIsBanned(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushboolean(state, channel && channel->IsBanned(guid));
+    return 1;
+}
+
+int ChannelGetPlayerFlags(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushinteger(state, channel ? channel->GetPlayerFlags(guid) : 0);
+    return 1;
+}
+
+int ChannelSetModerator(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    bool set = lua_toboolean(state, 3) != 0;
+    if (channel && channel->IsOn(guid))
+        channel->SetModerator(guid, set);
+    return 0;
+}
+
+int ChannelSetMute(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    bool set = lua_toboolean(state, 3) != 0;
+    if (channel && channel->IsOn(guid))
+        channel->SetMute(guid, set);
+    return 0;
+}
+
+int ChannelSendPacket(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    WorldPacket* packet = CheckWorldPacket(state, 2);
+    ObjectGuid ignored;
+    if (!lua_isnoneornil(state, 3))
+        ignored = CheckObjectGuidValue(state, 3);
+
+    if (channel && packet)
+        channel->SendToAll(packet, ignored);
+    return 0;
+}
+
+int ChannelSendToOne(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    WorldPacket* packet = CheckWorldPacket(state, 2);
+    ObjectGuid receiver = CheckObjectGuidValue(state, 3);
+    if (channel && packet)
+        channel->SendToOne(packet, receiver);
+    return 0;
+}
+
+int ChannelSay(lua_State* state)
+{
+    Channel* channel = ResolveChannel(CheckChannel(state, 1));
+    ObjectGuid sender = CheckObjectGuidValue(state, 2);
+    char const* message = luaL_checkstring(state, 3);
+    uint32 lang = static_cast<uint32>(luaL_optinteger(state, 4, LANG_UNIVERSAL));
+    bool skipCheck = lua_toboolean(state, 5) != 0;
+
+    if (channel)
+        channel->AsyncSay(sender, message, lang, skipCheck);
+    return 0;
+}
+
+int ChannelGetString(lua_State* state)
+{
+    return ChannelGetName(state);
+}
+
+int ChannelGC(lua_State* state)
+{
+    auto* holder = static_cast<LuaChannel*>(luaL_checkudata(state, 1, CHANNEL_METATABLE));
+    if (holder)
+        holder->~LuaChannel();
+    return 0;
 }
 
 int RollGetItemGUID(lua_State* state)
@@ -14079,6 +14346,7 @@ void TurtleLuaEngine::OpenState()
     RegisterWorldPacketMetatable();
     RegisterObjectGuidMetatable();
     RegisterChatHandlerMetatable();
+    RegisterChannelMetatable();
     RegisterRollMetatable();
 }
 
@@ -16271,6 +16539,50 @@ void TurtleLuaEngine::RegisterChatHandlerMetatable()
     lua_pop(_state, 1);
 }
 
+void TurtleLuaEngine::RegisterChannelMetatable()
+{
+    luaL_newmetatable(_state, CHANNEL_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "GetName", &ChannelGetName);
+    SetMethod(_state, "GetId", &ChannelGetId);
+    SetMethod(_state, "GetChannelId", &ChannelGetId);
+    SetMethod(_state, "GetChannelID", &ChannelGetId);
+    SetMethod(_state, "GetChannelDBId", &ChannelGetId);
+    SetMethod(_state, "GetChannelDBID", &ChannelGetId);
+    SetMethod(_state, "IsValid", &ChannelIsValid);
+    SetMethod(_state, "IsConstant", &ChannelIsConstant);
+    SetMethod(_state, "IsAnnounce", &ChannelIsAnnounce);
+    SetMethod(_state, "SetAnnounce", &ChannelSetAnnounce);
+    SetMethod(_state, "IsLevelRestricted", &ChannelIsLevelRestricted);
+    SetMethod(_state, "IsLFG", &ChannelIsLFG);
+    SetMethod(_state, "GetPassword", &ChannelGetPassword);
+    SetMethod(_state, "SetPassword", &ChannelSetPassword);
+    SetMethod(_state, "GetNumPlayers", &ChannelGetNumPlayers);
+    SetMethod(_state, "GetPlayerCount", &ChannelGetNumPlayers);
+    SetMethod(_state, "GetFlags", &ChannelGetFlags);
+    SetMethod(_state, "HasFlag", &ChannelHasFlag);
+    SetMethod(_state, "GetSecurityLevel", &ChannelGetSecurityLevel);
+    SetMethod(_state, "SetSecurityLevel", &ChannelSetSecurityLevel);
+    SetMethod(_state, "GetTeam", &ChannelGetTeam);
+    SetMethod(_state, "IsOn", &ChannelIsOn);
+    SetMethod(_state, "IsBanned", &ChannelIsBanned);
+    SetMethod(_state, "GetPlayerFlags", &ChannelGetPlayerFlags);
+    SetMethod(_state, "SetModerator", &ChannelSetModerator);
+    SetMethod(_state, "SetMute", &ChannelSetMute);
+    SetMethod(_state, "SendPacket", &ChannelSendPacket);
+    SetMethod(_state, "SendToAll", &ChannelSendPacket);
+    SetMethod(_state, "SendToOne", &ChannelSendToOne);
+    SetMethod(_state, "Say", &ChannelSay);
+    SetMethod(_state, "SendMessage", &ChannelSay);
+    lua_setfield(_state, -2, "__index");
+
+    SetMethod(_state, "__tostring", &ChannelGetString);
+    SetMethod(_state, "__gc", &ChannelGC);
+
+    lua_pop(_state, 1);
+}
+
 void TurtleLuaEngine::RegisterRollMetatable()
 {
     luaL_newmetatable(_state, ROLL_METATABLE);
@@ -18247,7 +18559,7 @@ void TurtleLuaEngine::OnPlayerBGDesertion(Player* player, uint32 type)
     }
 }
 
-bool TurtleLuaEngine::CallPlayerChatEvent(uint32 eventId, char const* context, Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver, Group* group, Guild* guild, char const* channelName)
+bool TurtleLuaEngine::CallPlayerChatEvent(uint32 eventId, char const* context, Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver, Group* group, Guild* guild, Channel* channel)
 {
     if (!player)
         return true;
@@ -18286,13 +18598,14 @@ bool TurtleLuaEngine::CallPlayerChatEvent(uint32 eventId, char const* context, P
                 PushGuild(guild);
                 break;
             case PLAYER_EVENT_ON_CHANNEL_CHAT:
-                lua_pushstring(_state, channelName ? channelName : "");
+                lua_pushinteger(_state, channel ? channel->GetChannelId() : 0);
+                PushChannelValue(_state, channel);
                 break;
             default:
                 break;
         }
 
-        int argCount = eventId == PLAYER_EVENT_ON_CHAT ? 5 : 6;
+        int argCount = eventId == PLAYER_EVENT_ON_CHAT ? 5 : (eventId == PLAYER_EVENT_ON_CHANNEL_CHAT ? 7 : 6);
         if (lua_pcall(_state, argCount, LUA_MULTRET, 0) != LUA_OK)
         {
             LogError(context);
@@ -18366,14 +18679,14 @@ bool TurtleLuaEngine::OnPlayerGuildChat(Player* player, uint32 type, uint32 lang
     return CallPlayerChatEvent(PLAYER_EVENT_ON_GUILD_CHAT, "player guild chat event", player, type, lang, message, nullptr, nullptr, guild, nullptr);
 }
 
-bool TurtleLuaEngine::OnPlayerChannelChat(Player* player, uint32 type, uint32 lang, std::string& message, std::string const& channelName)
+bool TurtleLuaEngine::OnPlayerChannelChat(Player* player, uint32 type, uint32 lang, std::string& message, Channel* channel)
 {
     std::lock_guard<std::recursive_mutex> guard(_lock);
 
     if (!IsEnabled())
         return true;
 
-    return CallPlayerChatEvent(PLAYER_EVENT_ON_CHANNEL_CHAT, "player channel chat event", player, type, lang, message, nullptr, nullptr, nullptr, channelName.c_str());
+    return CallPlayerChatEvent(PLAYER_EVENT_ON_CHANNEL_CHAT, "player channel chat event", player, type, lang, message, nullptr, nullptr, nullptr, channel);
 }
 
 bool TurtleLuaEngine::OnAddonMessage(Player* sender, uint32 type, std::string const& message, Player* receiver, Guild* guild, Group* group, uint32 channelId, bool hasChannelTarget)

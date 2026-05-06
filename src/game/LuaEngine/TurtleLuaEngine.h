@@ -20,6 +20,7 @@ class WorldObject;
 class Quest;
 class Group;
 class Guild;
+class Channel;
 class Map;
 class Spell;
 class Roll;
@@ -236,7 +237,7 @@ public:
     bool OnPlayerWhisper(Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver);
     bool OnPlayerGroupChat(Player* player, uint32 type, uint32 lang, std::string& message, Group* group);
     bool OnPlayerGuildChat(Player* player, uint32 type, uint32 lang, std::string& message, Guild* guild);
-    bool OnPlayerChannelChat(Player* player, uint32 type, uint32 lang, std::string& message, std::string const& channelName);
+    bool OnPlayerChannelChat(Player* player, uint32 type, uint32 lang, std::string& message, Channel* channel);
     bool OnAddonMessage(Player* sender, uint32 type, std::string const& message, Player* receiver, Guild* guild, Group* group, uint32 channelId, bool hasChannelTarget);
     void OnPlayerEmote(Player* player, uint32 emote);
     bool OnPlayerCanGroupInvite(Player* player, std::string const& memberName);
@@ -381,6 +382,7 @@ private:
     void RegisterWorldPacketMetatable();
     void RegisterObjectGuidMetatable();
     void RegisterChatHandlerMetatable();
+    void RegisterChannelMetatable();
     void RegisterRollMetatable();
     void RegisterUnitMetatable();
 
@@ -388,7 +390,7 @@ private:
     uint32 GenerateTimedEventDelay(TimedEvent const& event) const;
     WorldObject* ResolveTimedEventObject(TimedEvent const& event);
     bool CallPlayerEvent(uint32 eventId, Player* player);
-    bool CallPlayerChatEvent(uint32 eventId, char const* context, Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver, Group* group, Guild* guild, char const* channelName);
+    bool CallPlayerChatEvent(uint32 eventId, char const* context, Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver, Group* group, Guild* guild, Channel* channel);
     void CallPlayerItemEvent(uint32 eventId, char const* context, Player* player, Item* item, uint32 count);
     bool CallServerPacketEvent(uint32 eventId, WorldPacket& packet, Player* player, char const* context);
     bool CallPacketEvent(uint32 opcode, uint32 eventId, WorldPacket& packet, Player* player, char const* context);

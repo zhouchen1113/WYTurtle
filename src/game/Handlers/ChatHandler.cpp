@@ -468,7 +468,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (Channel *chn = cMgr->GetChannel(channel, playerPointer))
                 {
 #ifdef USE_LUA
-                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, channel))
+                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
                         return;
 #endif
 

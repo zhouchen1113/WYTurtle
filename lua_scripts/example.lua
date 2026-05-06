@@ -371,8 +371,8 @@ end)
 --     print(player:GetName() .. " guild chat in " .. guild:GetName())
 -- end)
 --
--- RegisterPlayerEvent(22, function(event, player, message, chatType, language, channelName)
---     print(player:GetName() .. " channel " .. channelName .. ": " .. message)
+-- RegisterPlayerEvent(22, function(event, player, message, chatType, language, channelId, channel)
+--     print(player:GetName() .. " channel " .. channel:GetName() .. " id=" .. channelId .. ": " .. message)
 -- end)
 --
 -- 动作表情包事件。这里是客户端 CMSG_EMOTE 的数字 emote，不是 /me 文本。
