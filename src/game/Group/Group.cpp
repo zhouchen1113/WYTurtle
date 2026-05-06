@@ -1164,7 +1164,7 @@ void Group::CountTheRoll(Rolls::iterator& rollI)
                         CheckSoulboundException(player, *item, newItem, roll->lootedTargetGUID.IsCreature() ? player->GetMap()->GetCreature(roll->lootedTargetGUID) : nullptr);
                         player->OnReceivedItem(newItem);
 #ifdef USE_LUA
-                        sTurtleLuaEngine.OnPlayerGroupRollRewardItem(player, newItem, item->count, ROLL_NEED);
+                        sTurtleLuaEngine.OnPlayerGroupRollRewardItem(player, newItem, item->count, ROLL_NEED, roll);
 #endif
                     }
                 }
@@ -1237,7 +1237,7 @@ void Group::CountTheRoll(Rolls::iterator& rollI)
                         CheckSoulboundException(player, *item, newItem, roll->lootedTargetGUID.IsCreature() ? player->GetMap()->GetCreature(roll->lootedTargetGUID) : nullptr);
                         player->OnReceivedItem(newItem);
 #ifdef USE_LUA
-                        sTurtleLuaEngine.OnPlayerGroupRollRewardItem(player, newItem, item->count, ROLL_GREED);
+                        sTurtleLuaEngine.OnPlayerGroupRollRewardItem(player, newItem, item->count, ROLL_GREED, roll);
 #endif
                     }
                 }

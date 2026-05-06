@@ -22,6 +22,7 @@ class Group;
 class Guild;
 class Map;
 class Spell;
+class Roll;
 class WorldPacket;
 class SpellCastTargets;
 class ObjectGuid;
@@ -214,7 +215,7 @@ public:
     void OnPlayerCreateItem(Player* player, Item* item, uint32 count);
     void OnPlayerStoreNewItem(Player* player, Item* item, uint32 count);
     void OnPlayerCompleteQuest(Player* player, Quest const* quest);
-    void OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, uint32 voteType);
+    void OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, uint32 voteType, Roll const* roll);
     void OnPlayerBGDesertion(Player* player, uint32 type);
     bool OnPlayerChat(Player* player, uint32 type, uint32 lang, std::string& message);
     bool OnPlayerWhisper(Player* player, uint32 type, uint32 lang, std::string& message, Player* receiver);
@@ -361,6 +362,7 @@ private:
     void RegisterWorldPacketMetatable();
     void RegisterObjectGuidMetatable();
     void RegisterChatHandlerMetatable();
+    void RegisterRollMetatable();
     void RegisterUnitMetatable();
 
     void LogError(char const* context);

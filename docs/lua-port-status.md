@@ -5,7 +5,7 @@
 
 当前实现不是把 AzerothCore 3.3.5 的 Eluna 原样照搬，而是做了一套适配
 Turtle 1.12 核心结构的 Lua 兼容层。它已经可以加载自定义 Lua 脚本，并支持
-常用事件、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
+常用事件、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、Roll、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
 
 ## 当前实现位置
 
@@ -61,6 +61,7 @@ E:\TurtleBY
 - GameObject 兼容补齐：`HasQuest`、`IsTransport`、`IsActive`、`IsDestructible`、`GetLootRecipient`、`GetLootRecipientGroup`、`AddLoot`、`SaveToDB`、`RemoveFromWorld`、`UseDoorOrButton`、`Despawn`、`SetRespawnTime`。
 - Spell 兼容补齐：`IsAutoRepeat`、`SetAutoRepeat`、`Cast`、`Finish`、`GetDuration`、`GetReagentCost`、`GetTargetDest`。
 - Group 兼容补齐：`GetGUID`、`GetMemberGUID`、`GetGroupType`、`IsLFGGroup`、`IsAssistant`、`SameSubGroup`、`HasFreeSlotSubGroup`、`SetLeader`、`AddMember`、`RemoveMember`、`Disband`、`ConvertToRaid`、`SetMembersGroup`、`SetTargetIcon`、`SetMemberFlag`、`SendPacket`。
+- Roll 基础对象封装：玩家事件 `56` 的最后一个参数现在返回 `Roll` 对象，不再是 `nil`；可读取掷骰物品、来源 GUID、参与玩家投票、need/greed/pass 统计、物品槽位和投票掩码。
 - Guild 兼容补齐：`GetMembers`、`SetLeader`、`SetBankTabText`、`SendPacket`、`SendPacketToRanked`、`Disband`、`AddMember`、`DeleteMember`、`SetMemberRank`、`SetName`、`UpdateMemberData`、`MassInviteToEvent`、`SwapItems`、`SwapItemsWithInventory`、`GetTotalBankMoney`、`GetCreatedDate`、`ResetTimes`、`ModifyBankMoney`。
 - WorldPacket 基础对象封装：`CreatePacket(opcode, size)` 现在返回 `WorldPacket` 对象，支持 opcode / size 查询、opcode 修改、基础整数/浮点/GUID/字符串读写；`Player`、`Group`、`Guild`、`WorldObject` 的 `SendPacket` 入口已经可以发送该对象。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
@@ -357,7 +358,7 @@ return "新的聊天内容"     -- 改写聊天内容
 - `53` 玩家把新物品放入背包后触发，参数是物品对象和本次数量。当前覆盖 `StoreNewItem()` 成功路径，不覆盖直接装备到装备栏的 `EquipNewItem()`。
 - `54` 玩家完成任务后触发，参数是 `Quest` 对象；触发点在核心把任务状态设为完成之后。
 - `55` 玩家发出组队邀请前触发，参数是邀请者玩家和被邀请角色名字符串。返回 `false` 可以阻止本次邀请；当前 Turtle 适配层先传角色名，不传被邀请者 Player 对象，以贴近 3.3.5 Eluna 的 `memberName` 参数。
-- `56` 队伍掷骰获胜并实际把物品放进背包后触发，参数是获胜玩家、物品对象、数量、voteType 和 roll。当前 `voteType` 使用核心 `ROLL_NEED` / `ROLL_GREED` 数值；`Roll` 对象封装还没有移植，所以最后一个参数暂时固定为 `nil`。
+- `56` 队伍掷骰获胜并实际把物品放进背包后触发，参数是获胜玩家、物品对象、数量、voteType 和 roll。当前 `voteType` 使用核心 `ROLL_NEED` / `ROLL_GREED` 数值；最后一个参数现在是 `Roll` 对象，可读取本次掷骰的物品、来源和参与玩家投票信息。
 - `57` 玩家因主动离开战场或竞技场而获得逃亡惩罚前触发，`type=0` 表示离开战场，`type=5` 表示离开竞技场。Turtle 目前先覆盖这个最常见路径，排队超时/拒绝进入等 3.3.5 细分类型后续再补。
 - `58` 玩家宠物、召唤物或被玩家控制的 Creature 击杀 Creature 时触发，参数是归属玩家和被击杀 Creature。这个事件不接收返回值；玩家本人直接击杀仍走 `7`。
 - `59` 玩家接受复活请求、核心真正复活前触发，参数是玩家。返回 `false` 可以阻止本次复活，并清理当前复活请求，避免请求残留。
@@ -2026,6 +2027,39 @@ group:SendPacket(packet)
 - `group:SetMemberFlag()` 支持 `0x01` 助手开关；`0x02` 主坦克和 `0x04` 主助理当前只支持设置，不支持用 `apply=false` 清空。
 - `group:SendPacket(packet)` 会把 `WorldPacket` 广播给队伍成员；可选参数仍按当前 C++ 入口支持 `ignorePlayersInBg` 和忽略 GUID。
 
+## Roll 方法
+
+`RegisterPlayerEvent(56, function(event, player, item, count, voteType, roll) end)` 里的 `roll`
+现在是掷骰结果快照对象。它在 Lua 回调期间读取安全，脚本不要把它长期保存到全局变量或定时器里当作实时核心对象使用。
+
+```lua
+roll:GetItemGUID()
+roll:GetItemGUIDLow()
+roll:GetItemObjectGuid()
+roll:GetItemId()
+roll:GetItemEntry()
+roll:GetItemRandomPropId()
+roll:GetItemRandomSuffix()
+roll:GetItemCount()
+roll:GetLootedTargetGUID()
+roll:GetLootSourceGUID()
+roll:GetPlayerVote(playerGuidOrLowGuid)
+roll:GetPlayerVoteGUIDs()
+roll:GetTotalPlayersRolling()
+roll:GetTotalNeed()
+roll:GetTotalGreed()
+roll:GetTotalPass()
+roll:GetItemSlot()
+roll:GetRollVoteMask()
+```
+
+说明：
+
+- `GetItemGUID()` / `GetItemGUIDLow()` 返回获胜后实际进背包物品的低位 GUID 数字；需要 `ObjectGuid` 对象时用 `GetItemObjectGuid()`。
+- `GetLootedTargetGUID()` / `GetLootSourceGUID()` 返回被拾取目标的 `ObjectGuid` 对象，通常是掉落该物品的 Creature。
+- `GetPlayerVoteGUIDs()` 返回参与掷骰玩家的 GUID 表；再把其中某个 GUID 传给 `GetPlayerVote(guid)` 可得到该玩家的投票类型。
+- Turtle 1.12 没有 3.3.5 的附魔分解掷骰按钮，所以 `GetRollVoteMask()` 当前按可用的 pass/need/greed 返回 `0x07`，`GetItemRandomSuffix()` 返回 `0`。
+
 ## Guild 方法
 
 可以通过 `player:GetGuild()`、`GetGuildById(id)`、`GetGuildByName(name)` 取得公会对象。
@@ -2148,6 +2182,7 @@ Map 兼容说明：
 - `SpellCastTargets` 物品使用目标对象。
 - `ObjectGuid` GUID 值对象。
 - `ChatHandler` 命令处理器基础对象。
+- `Roll` 队伍掷骰结果快照对象。
 - `Aura` 光环实例基础对象。
 - 在线玩家列表、在线人数和已加载地图查询。
 - 全局定时器和对象绑定定时器。

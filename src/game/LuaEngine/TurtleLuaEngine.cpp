@@ -45,6 +45,7 @@
 #include <shared_mutex>
 #include <sstream>
 #include <type_traits>
+#include <utility>
 
 extern "C"
 {
@@ -74,6 +75,7 @@ constexpr char const* SPELLTARGETS_METATABLE = "Turtle.SpellCastTargets";
 constexpr char const* WORLDPACKET_METATABLE = "Turtle.WorldPacket";
 constexpr char const* OBJECTGUID_METATABLE = "Turtle.ObjectGuid";
 constexpr char const* CHATHANDLER_METATABLE = "Turtle.ChatHandler";
+constexpr char const* ROLL_METATABLE = "Turtle.Roll";
 
 uint32 ToElunaChatType(uint32 type)
 {
@@ -203,6 +205,23 @@ struct LuaObjectGuid
 struct LuaChatHandler
 {
     ObjectGuid playerGuid;
+};
+
+struct LuaRoll
+{
+    ObjectGuid itemGuid;
+    ObjectGuid lootedTargetGuid;
+    uint32 itemId = 0;
+    int32 itemRandomPropId = 0;
+    uint32 itemRandomSuffix = 0;
+    uint32 itemCount = 0;
+    uint32 totalPlayersRolling = 0;
+    uint32 totalNeed = 0;
+    uint32 totalGreed = 0;
+    uint32 totalPass = 0;
+    uint32 itemSlot = 0;
+    uint32 rollVoteMask = 0;
+    std::vector<std::pair<ObjectGuid, uint32>> playerVotes;
 };
 
 class LuaChatHandlerAccess : public ChatHandler
@@ -432,6 +451,42 @@ void PushChatHandlerValue(lua_State* state, Player* player)
     holder->playerGuid = player ? player->GetObjectGuid() : ObjectGuid();
 
     luaL_getmetatable(state, CHATHANDLER_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+LuaRoll* CheckRoll(lua_State* state, int index)
+{
+    return static_cast<LuaRoll*>(luaL_checkudata(state, index, ROLL_METATABLE));
+}
+
+void PushRollValue(lua_State* state, Roll const* roll, Item* item, uint32 count)
+{
+    if (!roll)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    auto* holder = static_cast<LuaRoll*>(lua_newuserdata(state, sizeof(LuaRoll)));
+    new (holder) LuaRoll();
+
+    holder->itemGuid = item ? item->GetObjectGuid() : ObjectGuid();
+    holder->lootedTargetGuid = roll->lootedTargetGUID;
+    holder->itemId = roll->itemid;
+    holder->itemRandomPropId = roll->itemRandomPropId;
+    holder->itemCount = count;
+    holder->totalPlayersRolling = roll->totalPlayersRolling;
+    holder->totalNeed = roll->totalNeed;
+    holder->totalGreed = roll->totalGreed;
+    holder->totalPass = roll->totalPass;
+    holder->itemSlot = roll->itemSlot;
+    holder->rollVoteMask = 0x01 | 0x02 | 0x04;
+
+    holder->playerVotes.reserve(roll->playerVote.size());
+    for (auto const& vote : roll->playerVote)
+        holder->playerVotes.emplace_back(vote.first, static_cast<uint32>(vote.second));
+
+    luaL_getmetatable(state, ROLL_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -1509,6 +1564,144 @@ int ChatHandlerHasSentErrorMessage(lua_State* state)
 
     lua_pushboolean(state, sent);
     return 1;
+}
+
+int RollGetItemGUID(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemGuid.GetCounter() : 0);
+    return 1;
+}
+
+int RollGetItemGUIDObject(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    PushObjectGuidValue(state, roll ? roll->itemGuid : ObjectGuid());
+    return 1;
+}
+
+int RollGetLootedTargetGUID(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    PushObjectGuidValue(state, roll ? roll->lootedTargetGuid : ObjectGuid());
+    return 1;
+}
+
+int RollGetItemId(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemId : 0);
+    return 1;
+}
+
+int RollGetItemRandomPropId(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemRandomPropId : 0);
+    return 1;
+}
+
+int RollGetItemRandomSuffix(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemRandomSuffix : 0);
+    return 1;
+}
+
+int RollGetItemCount(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemCount : 0);
+    return 1;
+}
+
+int RollGetPlayerVote(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+
+    if (roll)
+    {
+        for (auto const& vote : roll->playerVotes)
+        {
+            if (vote.first == guid)
+            {
+                lua_pushinteger(state, vote.second);
+                return 1;
+            }
+        }
+    }
+
+    lua_pushnil(state);
+    return 1;
+}
+
+int RollGetPlayerVoteGUIDs(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_newtable(state);
+
+    if (roll)
+    {
+        int index = 1;
+        for (auto const& vote : roll->playerVotes)
+        {
+            PushObjectGuidValue(state, vote.first);
+            lua_rawseti(state, -2, index++);
+        }
+    }
+
+    return 1;
+}
+
+int RollGetTotalPlayersRolling(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->totalPlayersRolling : 0);
+    return 1;
+}
+
+int RollGetTotalNeed(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->totalNeed : 0);
+    return 1;
+}
+
+int RollGetTotalGreed(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->totalGreed : 0);
+    return 1;
+}
+
+int RollGetTotalPass(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->totalPass : 0);
+    return 1;
+}
+
+int RollGetItemSlot(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->itemSlot : 0);
+    return 1;
+}
+
+int RollGetRollVoteMask(lua_State* state)
+{
+    LuaRoll* roll = CheckRoll(state, 1);
+    lua_pushinteger(state, roll ? roll->rollVoteMask : 0);
+    return 1;
+}
+
+int RollGC(lua_State* state)
+{
+    auto* holder = static_cast<LuaRoll*>(luaL_checkudata(state, 1, ROLL_METATABLE));
+    if (holder)
+        holder->~LuaRoll();
+    return 0;
 }
 
 int LuaGetGameTime(lua_State* state)
@@ -13710,6 +13903,7 @@ void TurtleLuaEngine::OpenState()
     RegisterWorldPacketMetatable();
     RegisterObjectGuidMetatable();
     RegisterChatHandlerMetatable();
+    RegisterRollMetatable();
 }
 
 void TurtleLuaEngine::CloseState()
@@ -15872,6 +16066,42 @@ void TurtleLuaEngine::RegisterChatHandlerMetatable()
     lua_pop(_state, 1);
 }
 
+void TurtleLuaEngine::RegisterRollMetatable()
+{
+    luaL_newmetatable(_state, ROLL_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "GetItemGUID", &RollGetItemGUID);
+    SetMethod(_state, "GetItemGuid", &RollGetItemGUID);
+    SetMethod(_state, "GetItemGUIDLow", &RollGetItemGUID);
+    SetMethod(_state, "GetItemGuidLow", &RollGetItemGUID);
+    SetMethod(_state, "GetItemObjectGuid", &RollGetItemGUIDObject);
+    SetMethod(_state, "GetItemObjectGUID", &RollGetItemGUIDObject);
+    SetMethod(_state, "GetLootedTargetGUID", &RollGetLootedTargetGUID);
+    SetMethod(_state, "GetLootedTargetGuid", &RollGetLootedTargetGUID);
+    SetMethod(_state, "GetLootSourceGUID", &RollGetLootedTargetGUID);
+    SetMethod(_state, "GetLootSourceGuid", &RollGetLootedTargetGUID);
+    SetMethod(_state, "GetItemId", &RollGetItemId);
+    SetMethod(_state, "GetItemEntry", &RollGetItemId);
+    SetMethod(_state, "GetItemRandomPropId", &RollGetItemRandomPropId);
+    SetMethod(_state, "GetItemRandomSuffix", &RollGetItemRandomSuffix);
+    SetMethod(_state, "GetItemCount", &RollGetItemCount);
+    SetMethod(_state, "GetPlayerVote", &RollGetPlayerVote);
+    SetMethod(_state, "GetPlayerVoteGUIDs", &RollGetPlayerVoteGUIDs);
+    SetMethod(_state, "GetPlayerVoteGuids", &RollGetPlayerVoteGUIDs);
+    SetMethod(_state, "GetTotalPlayersRolling", &RollGetTotalPlayersRolling);
+    SetMethod(_state, "GetTotalNeed", &RollGetTotalNeed);
+    SetMethod(_state, "GetTotalGreed", &RollGetTotalGreed);
+    SetMethod(_state, "GetTotalPass", &RollGetTotalPass);
+    SetMethod(_state, "GetItemSlot", &RollGetItemSlot);
+    SetMethod(_state, "GetRollVoteMask", &RollGetRollVoteMask);
+    lua_setfield(_state, -2, "__index");
+
+    SetMethod(_state, "__gc", &RollGC);
+
+    lua_pop(_state, 1);
+}
+
 void TurtleLuaEngine::RegisterUnitMetatable()
 {
 }
@@ -17632,7 +17862,7 @@ void TurtleLuaEngine::OnPlayerCompleteQuest(Player* player, Quest const* quest)
     }
 }
 
-void TurtleLuaEngine::OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, uint32 voteType)
+void TurtleLuaEngine::OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, uint32 voteType, Roll const* roll)
 {
     std::lock_guard<std::recursive_mutex> guard(_lock);
 
@@ -17658,7 +17888,7 @@ void TurtleLuaEngine::OnPlayerGroupRollRewardItem(Player* player, Item* item, ui
         PushItem(item);
         lua_pushinteger(_state, count);
         lua_pushinteger(_state, voteType);
-        lua_pushnil(_state);
+        PushRollValue(_state, roll, item, count);
 
         if (lua_pcall(_state, 6, 0, 0) != LUA_OK)
         {
