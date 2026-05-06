@@ -1,6 +1,7 @@
 #include "TurtleLuaEngine.h"
 
 #include "AccountMgr.h"
+#include "BattleGround.h"
 #include "Chat.h"
 #include "Channel.h"
 #include "ChannelMgr.h"
@@ -79,6 +80,7 @@ constexpr char const* GROUP_METATABLE = "Turtle.Group";
 constexpr char const* GUILD_METATABLE = "Turtle.Guild";
 constexpr char const* MAP_METATABLE = "Turtle.Map";
 constexpr char const* INSTANCEDATA_METATABLE = "Turtle.InstanceData";
+constexpr char const* BATTLEGROUND_METATABLE = "Turtle.BattleGround";
 constexpr char const* AURA_METATABLE = "Turtle.Aura";
 constexpr char const* SPELL_METATABLE = "Turtle.Spell";
 constexpr char const* SPELLINFO_METATABLE = "Turtle.SpellInfo";
@@ -192,6 +194,11 @@ struct LuaMap
 struct LuaInstanceData
 {
     InstanceData* data;
+};
+
+struct LuaBattleGround
+{
+    BattleGround* bg;
 };
 
 struct LuaAura
@@ -435,6 +442,12 @@ InstanceData* CheckInstanceData(lua_State* state, int index)
     return holder ? holder->data : nullptr;
 }
 
+BattleGround* CheckBattleGround(lua_State* state, int index)
+{
+    auto* holder = static_cast<LuaBattleGround*>(luaL_checkudata(state, index, BATTLEGROUND_METATABLE));
+    return holder ? holder->bg : nullptr;
+}
+
 Aura* CheckAura(lua_State* state, int index)
 {
     auto* holder = static_cast<LuaAura*>(luaL_checkudata(state, index, AURA_METATABLE));
@@ -589,6 +602,21 @@ void PushInstanceDataValue(lua_State* state, InstanceData* data)
     holder->data = data;
 
     luaL_getmetatable(state, INSTANCEDATA_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void PushBattleGroundValue(lua_State* state, BattleGround* bg)
+{
+    if (!bg)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    auto* holder = static_cast<LuaBattleGround*>(lua_newuserdata(state, sizeof(LuaBattleGround)));
+    holder->bg = bg;
+
+    luaL_getmetatable(state, BATTLEGROUND_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -1064,6 +1092,20 @@ int LuaRegisterGuildEvent(lua_State* state)
     return 0;
 }
 
+int LuaRegisterBGEvent(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    lua_pushvalue(state, 2);
+    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    engine->RegisterBattleGroundEvent(eventId, functionRef);
+    return 0;
+}
+
 int LuaRegisterPacketEvent(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -1208,6 +1250,18 @@ int LuaClearGuildEvents(lua_State* state)
     bool allEvents = lua_isnoneornil(state, 1);
     uint32 eventId = allEvents ? 0 : static_cast<uint32>(luaL_checkinteger(state, 1));
     engine->ClearGuildEvents(eventId, allEvents);
+    return 0;
+}
+
+int LuaClearBattleGroundEvents(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    bool allEvents = lua_isnoneornil(state, 1);
+    uint32 eventId = allEvents ? 0 : static_cast<uint32>(luaL_checkinteger(state, 1));
+    engine->ClearBattleGroundEvents(eventId, allEvents);
     return 0;
 }
 
@@ -13066,6 +13120,139 @@ int InstanceDataSaveToDB(lua_State* state)
     return 0;
 }
 
+int BattleGroundGetName(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushstring(state, bg ? bg->GetName() : "");
+    return 1;
+}
+
+int BattleGroundGetAlivePlayersCountByTeam(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    Team team = static_cast<Team>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, bg ? bg->GetAlivePlayersCountByTeam(team) : 0);
+    return 1;
+}
+
+int BattleGroundGetMap(lua_State* state)
+{
+    TurtleLuaEngine* engine = GetEngine(state);
+    BattleGround* bg = CheckBattleGround(state, 1);
+    if (engine && bg && bg->GetInstanceID())
+        engine->PushMap(bg->GetBgMap());
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int BattleGroundGetBonusHonorFromKillCount(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    uint32 kills = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, bg ? bg->GetBonusHonorFromKill(kills) : 0);
+    return 1;
+}
+
+int BattleGroundGetEndTime(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetEndTime() : 0);
+    return 1;
+}
+
+int BattleGroundGetFreeSlotsForTeam(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    Team team = static_cast<Team>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, bg ? bg->GetFreeSlotsForTeam(team) : 0);
+    return 1;
+}
+
+int BattleGroundGetInstanceId(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetInstanceID() : 0);
+    return 1;
+}
+
+int BattleGroundGetMapId(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMapId() : 0);
+    return 1;
+}
+
+int BattleGroundGetTypeId(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetTypeID() : 0);
+    return 1;
+}
+
+int BattleGroundGetMaxLevel(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMaxLevel() : 0);
+    return 1;
+}
+
+int BattleGroundGetMinLevel(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMinLevel() : 0);
+    return 1;
+}
+
+int BattleGroundGetMaxPlayers(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMaxPlayers() : 0);
+    return 1;
+}
+
+int BattleGroundGetMinPlayers(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMinPlayers() : 0);
+    return 1;
+}
+
+int BattleGroundGetMaxPlayersPerTeam(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMaxPlayersPerTeam() : 0);
+    return 1;
+}
+
+int BattleGroundGetMinPlayersPerTeam(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetMinPlayersPerTeam() : 0);
+    return 1;
+}
+
+int BattleGroundGetWinner(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetWinner() : 0);
+    return 1;
+}
+
+int BattleGroundGetStatus(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushinteger(state, bg ? bg->GetStatus() : 0);
+    return 1;
+}
+
+int BattleGroundIsArena(lua_State* state)
+{
+    BattleGround* bg = CheckBattleGround(state, 1);
+    lua_pushboolean(state, bg && bg->IsArena());
+    return 1;
+}
+
 int AuraGetCaster(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -15570,6 +15757,7 @@ void TurtleLuaEngine::OpenState()
     RegisterGuildMetatable();
     RegisterMapMetatable();
     RegisterInstanceDataMetatable();
+    RegisterBattleGroundMetatable();
     RegisterAuraMetatable();
     RegisterSpellMetatable();
     RegisterSpellInfoMetatable();
@@ -15589,6 +15777,7 @@ void TurtleLuaEngine::CloseState()
 
     _serverEvents.clear();
     _playerEvents.clear();
+    _battleGroundEvents.clear();
     _mapEvents.clear();
     _instanceEvents.clear();
     _creatureEvents.clear();
@@ -15616,6 +15805,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "RegisterServerEvent", &LuaRegisterServerEvent);
     lua_register(_state, "RegisterGroupEvent", &LuaRegisterGroupEvent);
     lua_register(_state, "RegisterGuildEvent", &LuaRegisterGuildEvent);
+    lua_register(_state, "RegisterBGEvent", &LuaRegisterBGEvent);
     lua_register(_state, "RegisterPacketEvent", &LuaRegisterPacketEvent);
     lua_register(_state, "RegisterMapEvent", &LuaRegisterMapEvent);
     lua_register(_state, "RegisterInstanceEvent", &LuaRegisterInstanceEvent);
@@ -15632,6 +15822,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "ClearServerEvents", &LuaClearServerEvents);
     lua_register(_state, "ClearGroupEvents", &LuaClearGroupEvents);
     lua_register(_state, "ClearGuildEvents", &LuaClearGuildEvents);
+    lua_register(_state, "ClearBattleGroundEvents", &LuaClearBattleGroundEvents);
     lua_register(_state, "ClearPacketEvents", &LuaClearPacketEvents);
     lua_register(_state, "ClearMapEvents", &LuaClearMapEvents);
     lua_register(_state, "ClearInstanceEvents", &LuaClearInstanceEvents);
@@ -17562,6 +17753,39 @@ void TurtleLuaEngine::RegisterInstanceDataMetatable()
     lua_pop(_state, 1);
 }
 
+void TurtleLuaEngine::RegisterBattleGroundMetatable()
+{
+    luaL_newmetatable(_state, BATTLEGROUND_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "GetName", &BattleGroundGetName);
+    SetMethod(_state, "GetAlivePlayersCountByTeam", &BattleGroundGetAlivePlayersCountByTeam);
+    SetMethod(_state, "GetMap", &BattleGroundGetMap);
+    SetMethod(_state, "GetBonusHonorFromKillCount", &BattleGroundGetBonusHonorFromKillCount);
+    SetMethod(_state, "GetEndTime", &BattleGroundGetEndTime);
+    SetMethod(_state, "GetFreeSlotsForTeam", &BattleGroundGetFreeSlotsForTeam);
+    SetMethod(_state, "GetInstanceId", &BattleGroundGetInstanceId);
+    SetMethod(_state, "GetInstanceID", &BattleGroundGetInstanceId);
+    SetMethod(_state, "GetMapId", &BattleGroundGetMapId);
+    SetMethod(_state, "GetMapID", &BattleGroundGetMapId);
+    SetMethod(_state, "GetTypeId", &BattleGroundGetTypeId);
+    SetMethod(_state, "GetTypeID", &BattleGroundGetTypeId);
+    SetMethod(_state, "GetBgTypeId", &BattleGroundGetTypeId);
+    SetMethod(_state, "GetBGTypeId", &BattleGroundGetTypeId);
+    SetMethod(_state, "GetMaxLevel", &BattleGroundGetMaxLevel);
+    SetMethod(_state, "GetMinLevel", &BattleGroundGetMinLevel);
+    SetMethod(_state, "GetMaxPlayers", &BattleGroundGetMaxPlayers);
+    SetMethod(_state, "GetMinPlayers", &BattleGroundGetMinPlayers);
+    SetMethod(_state, "GetMaxPlayersPerTeam", &BattleGroundGetMaxPlayersPerTeam);
+    SetMethod(_state, "GetMinPlayersPerTeam", &BattleGroundGetMinPlayersPerTeam);
+    SetMethod(_state, "GetWinner", &BattleGroundGetWinner);
+    SetMethod(_state, "GetStatus", &BattleGroundGetStatus);
+    SetMethod(_state, "IsArena", &BattleGroundIsArena);
+    lua_setfield(_state, -2, "__index");
+
+    lua_pop(_state, 1);
+}
+
 void TurtleLuaEngine::RegisterAuraMetatable()
 {
     luaL_newmetatable(_state, AURA_METATABLE);
@@ -18125,6 +18349,11 @@ void TurtleLuaEngine::RegisterGuildEvent(uint32 eventId, int functionRef)
     _guildEvents[eventId].push_back(functionRef);
 }
 
+void TurtleLuaEngine::RegisterBattleGroundEvent(uint32 eventId, int functionRef)
+{
+    _battleGroundEvents[eventId].push_back(functionRef);
+}
+
 void TurtleLuaEngine::RegisterMapEvent(uint32 mapId, uint32 eventId, int functionRef)
 {
     _mapEvents[mapId][eventId].push_back(functionRef);
@@ -18203,6 +18432,11 @@ void TurtleLuaEngine::ClearGroupEvents(uint32 eventId, bool allEvents)
 void TurtleLuaEngine::ClearGuildEvents(uint32 eventId, bool allEvents)
 {
     ClearEventStore(_state, _guildEvents, eventId, allEvents);
+}
+
+void TurtleLuaEngine::ClearBattleGroundEvents(uint32 eventId, bool allEvents)
+{
+    ClearEventStore(_state, _battleGroundEvents, eventId, allEvents);
 }
 
 void TurtleLuaEngine::ClearMapEvents(uint32 mapId, uint32 eventId, bool allEvents)
@@ -18566,6 +18800,11 @@ void TurtleLuaEngine::PushMap(Map* map)
     lua_setmetatable(_state, -2);
 }
 
+void TurtleLuaEngine::PushBattleGround(BattleGround* bg)
+{
+    PushBattleGroundValue(_state, bg);
+}
+
 void TurtleLuaEngine::PushSpell(Spell* spell)
 {
     if (!spell)
@@ -18786,6 +19025,39 @@ void TurtleLuaEngine::CallServerMapEvent(uint32 eventId, Map* map, Player* playe
     }
 }
 
+void TurtleLuaEngine::CallBattleGroundEvent(uint32 eventId, BattleGround* /*bg*/, int argCount)
+{
+    int base = lua_gettop(_state) - argCount;
+    auto itr = _battleGroundEvents.find(eventId);
+    if (itr == _battleGroundEvents.end())
+    {
+        lua_settop(_state, base);
+        return;
+    }
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        for (int i = 1; i <= argCount; ++i)
+            lua_pushvalue(_state, base + i);
+
+        if (lua_pcall(_state, argCount, 0, 0) != LUA_OK)
+        {
+            LogError("battleground event");
+            lua_pop(_state, 1);
+        }
+    }
+
+    lua_settop(_state, base);
+}
+
 std::vector<int> TurtleLuaEngine::CollectInstanceEventRefs(Map* map, uint32 eventId)
 {
     std::vector<int> refs;
@@ -18959,6 +19231,63 @@ void TurtleLuaEngine::OnInstancePlayerEnter(Map* map, Player* player)
     PushMap(map);
     PushPlayer(player);
     CallInstanceEvent(map, INSTANCE_EVENT_ON_PLAYER_ENTER, 4);
+}
+
+void TurtleLuaEngine::OnBattleGroundCreate(BattleGround* bg)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !bg || !bg->GetInstanceID())
+        return;
+
+    lua_pushinteger(_state, BG_EVENT_ON_CREATE);
+    PushBattleGround(bg);
+    lua_pushinteger(_state, bg->GetTypeID());
+    lua_pushinteger(_state, bg->GetInstanceID());
+    CallBattleGroundEvent(BG_EVENT_ON_CREATE, bg, 4);
+}
+
+void TurtleLuaEngine::OnBattleGroundStart(BattleGround* bg)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !bg || !bg->GetInstanceID())
+        return;
+
+    lua_pushinteger(_state, BG_EVENT_ON_START);
+    PushBattleGround(bg);
+    lua_pushinteger(_state, bg->GetTypeID());
+    lua_pushinteger(_state, bg->GetInstanceID());
+    CallBattleGroundEvent(BG_EVENT_ON_START, bg, 4);
+}
+
+void TurtleLuaEngine::OnBattleGroundEnd(BattleGround* bg, uint32 winner)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !bg || !bg->GetInstanceID())
+        return;
+
+    lua_pushinteger(_state, BG_EVENT_ON_END);
+    PushBattleGround(bg);
+    lua_pushinteger(_state, bg->GetTypeID());
+    lua_pushinteger(_state, bg->GetInstanceID());
+    lua_pushinteger(_state, winner);
+    CallBattleGroundEvent(BG_EVENT_ON_END, bg, 5);
+}
+
+void TurtleLuaEngine::OnBattleGroundPreDestroy(BattleGround* bg)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !bg || !bg->GetInstanceID())
+        return;
+
+    lua_pushinteger(_state, BG_EVENT_ON_PRE_DESTROY);
+    PushBattleGround(bg);
+    lua_pushinteger(_state, bg->GetTypeID());
+    lua_pushinteger(_state, bg->GetInstanceID());
+    CallBattleGroundEvent(BG_EVENT_ON_PRE_DESTROY, bg, 4);
 }
 
 void TurtleLuaEngine::OnGroupCreate(Group* group, ObjectGuid const& leaderGuid, uint32 groupType)

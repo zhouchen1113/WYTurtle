@@ -5,7 +5,7 @@
 
 当前实现不是把 AzerothCore 3.3.5 的 Eluna 原样照搬，而是做了一套适配
 Turtle 1.12 核心结构的 Lua 兼容层。它已经可以加载自定义 Lua 脚本，并支持
-常用事件、Map/Instance 生命周期、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、Roll、InstanceData、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
+常用事件、Map/Instance 生命周期、战场事件、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、Roll、InstanceData、BattleGround、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
 
 ## 当前实现位置
 
@@ -79,6 +79,7 @@ E:\TurtleBY
 - 全局玩家 Gossip 事件补充：新增 `RegisterPlayerGossipEvent`、`ClearPlayerGossipEvents`，并在客户端选择玩家自身 Gossip 菜单项时回调 Lua。
 - 全局唯一 Creature 事件补充：新增 `RegisterUniqueCreatureEvent`、`ClearUniqueCreatureEvents`，按 `ObjectGuid + instanceId + eventId` 绑定单个已经刷出的生物；它和 `RegisterCreatureEvent` 共用现有 Creature 事件触发点，同一事件会先执行 entry 绑定，再执行唯一生物绑定。当前沿用本兼容层现有事件注册语义，不返回取消函数，`shots` 参数暂未实现。
 - 全局 Map/Instance 副本事件补充：新增 `RegisterMapEvent`、`RegisterInstanceEvent`、`ClearMapEvents`、`ClearInstanceEvents`。`RegisterMapEvent(mapId, eventId, function)` 按地图 ID 绑定该地图所有副本实例；`RegisterInstanceEvent(instanceId, eventId, function)` 按运行时实例 ID 绑定单个实例。同一副本事件会先执行 mapId 绑定，再执行 instanceId 绑定。当前已触发事件 `1` 初始化、`2` 加载、`3` 更新、`4` 玩家进入、`5` Creature 创建、`6` GameObject 创建；事件 `7` 检查战斗进度还没有统一安全触发点，暂不触发。
+- 全局战场事件补充：新增 `RegisterBGEvent`、`ClearBattleGroundEvents`，并接入战场创建、开始、结束和销毁前事件；新增 `BattleGround` 对象封装，当前 `BattleGroundMethods.h` 参考方法差异为 `ref=17 target=19 missing=0`。当前沿用本兼容层现有事件注册语义，不返回取消函数，`shots` 参数暂未实现。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -120,6 +121,7 @@ RegisterPlayerEvent(eventId, function)
 RegisterServerEvent(eventId, function)
 RegisterGroupEvent(eventId, function)
 RegisterGuildEvent(eventId, function)
+RegisterBGEvent(eventId, function[, shots])
 RegisterPacketEvent(opcode, eventId, function[, shots])
 RegisterMapEvent(mapId, eventId, function[, shots])
 RegisterInstanceEvent(instanceId, eventId, function[, shots])
@@ -136,6 +138,7 @@ ClearPlayerEvents([eventId])
 ClearServerEvents([eventId])
 ClearGroupEvents([eventId])
 ClearGuildEvents([eventId])
+ClearBattleGroundEvents([eventId])
 ClearPacketEvents(opcode, [eventId])
 ClearMapEvents(mapId, [eventId])
 ClearInstanceEvents(instanceId, [eventId])
@@ -254,9 +257,11 @@ print(...)
 - `RemoveEvents(false)` 只清理全局 `CreateLuaEvent` 创建的定时事件；`RemoveEvents(true)` 会连同对象绑定事件一起清理。
 - `RegisterGroupEvent` / `ClearGroupEvents` 当前已接通到组队创建、邀请、加入、移除、队长变化、解散等核心触发点。
 - `RegisterGuildEvent` / `ClearGuildEvents` 当前已接通到公会创建、成员加入、成员移除、MOTD 变更、信息变更、解散等核心触发点。
+- `RegisterBGEvent` / `ClearBattleGroundEvents` 当前已接通到战场创建、开始、结束和销毁前触发点。
 - `RegisterPlayerGossipEvent(playerGuidLow, 2, function)` 当前接通玩家自身 Gossip 菜单选择事件；玩家 Gossip 没有 `1` 号 hello 触发，脚本需要自己调用 `player:GossipMenuAddItem()` / `player:GossipSendMenu()` 打开菜单。
 - Group 事件参数：`1` 加入 `(event, group, guid)`；`2` 邀请 `(event, group, guid)`；`3` 移除 `(event, group, guid, method, nil, nil)`；`4` 队长变化 `(event, group, newLeaderGuid, oldLeaderGuid)`；`5` 解散 `(event, group)`；`6` 创建 `(event, group, leaderGuid, groupType)`。
 - Guild 事件参数：`1` 加入 `(event, guild, player, rank)`；`2` 移除 `(event, guild, player, isDisbanding)`；`3` MOTD 变化 `(event, guild, newMotd)`；`4` 信息变化 `(event, guild, newInfo)`；`5` 创建 `(event, guild, leader, name)`；`6` 解散 `(event, guild)`。离线成员无法取得 `Player` 对象时会传 `nil`。
+- BattleGround 事件参数：`1` 开始 `(event, bg, bgId, instanceId)`；`2` 结束 `(event, bg, bgId, instanceId, winner)`；`3` 创建 `(event, bg, bgId, instanceId)`；`4` 销毁前 `(event, bg, bgId, instanceId)`。
 - `RunCommand(command)` 按控制台权限把 GM 命令加入世界线程队列执行，命令前面的 `.` / `!` 可以带也可以不带。
 - `Kick(player)` 会断开指定玩家当前会话。
 - `Ban(mode, nameOrIP, durationSeconds[, reason[, author]])` 中 `mode` 为 `0` 账号、`1` 角色、`2` IP；Turtle 的封禁流程是异步查询账号/角色后再落库，所以合法请求通常先返回 `3`。
@@ -355,6 +360,7 @@ HIGHGUID_MO_TRANSPORT
 - `RegisterPacketEvent` 的第 4 个 `shots` 参数目前先作为兼容参数接收但不扣次数；这点和本适配层现有其他 `Register*Event` 一样，后续可统一补成可取消/限次回调。
 - `ClearPlayerEvents()` 清理所有玩家事件；传入 `eventId` 时只清理指定玩家事件。
 - `ClearServerEvents()` 清理所有服务端事件；传入 `eventId` 时只清理指定服务端事件。
+- `ClearBattleGroundEvents()` 清理所有战场事件；传入 `eventId` 时只清理指定战场事件。
 - `ClearPacketEvents(opcode)` 清理指定 opcode 的所有包事件；传入 `eventId` 时只清理该 opcode 的指定包事件。
 - `ClearMapEvents(mapId)` 清理指定地图 ID 绑定的所有副本生命周期事件；传入 `eventId` 时只清理该地图的指定副本事件。
 - `ClearInstanceEvents(instanceId)` 清理指定运行时实例 ID 绑定的所有副本生命周期事件；传入 `eventId` 时只清理该实例的指定事件。
@@ -401,6 +407,20 @@ ClearInstanceEvents(instanceId, 4)
 ```
 
 说明：`RegisterMapEvent` 的第一个参数是地图 ID，会作用于该地图所有副本实例；`RegisterInstanceEvent` 的第一个参数是运行时实例 ID，只作用于某一个已创建实例。两者绑定同一个事件时，先执行 mapId 绑定，再执行 instanceId 绑定。当前事件 `7`（检查战斗进度）没有统一安全触发点，暂不触发。
+
+### 战场事件
+
+```lua
+RegisterBGEvent(3, function(event, bg, bgId, instanceId) end)         -- 战场地图创建后
+RegisterBGEvent(1, function(event, bg, bgId, instanceId) end)         -- 战场正式开始
+RegisterBGEvent(2, function(event, bg, bgId, instanceId, winner) end) -- 战场结束
+RegisterBGEvent(4, function(event, bg, bgId, instanceId) end)         -- 战场销毁前
+
+ClearBattleGroundEvents(1)
+ClearBattleGroundEvents()
+```
+
+说明：`bgId` 是核心的战场类型 ID，`instanceId` 是运行时地图实例 ID。`winner` 使用核心队伍值；普通结束会传核心赢家，`EndNow()` 这类强制结束路径当前传 `TEAM_NONE`。`shots` 参数暂时只作为兼容参数接收，不会扣次数。
 
 服务端包事件也已接入，作用于所有 opcode：
 
@@ -2448,6 +2468,43 @@ Map 兼容说明：
 - `SetWeather(zoneId, weatherType, grade, permanent)` 会直接改变天气。`weatherType` 使用核心天气类型，常见值为 `0` 晴天、`1` 雨、`2` 雪、`3` 沙尘。
 - `GetInstanceData()` 当前返回 Turtle 1.12 的副本脚本对象，不是 3.3.5 Eluna 的纯 Lua table；没有副本脚本时返回 `nil`。`SaveInstanceData()` 会在当前地图存在实例数据时保存。
 
+## BattleGround 方法
+
+`RegisterBGEvent` 回调里的第二个参数会返回当前战场对象。这个对象映射的是 Turtle/MaNGOS 核心 `BattleGround`，适合读取战场状态、人数、等级段、地图实例和胜负信息。
+
+```lua
+bg:GetName()
+bg:GetAlivePlayersCountByTeam(team)
+bg:GetMap()
+bg:GetBonusHonorFromKillCount(kills)
+bg:GetEndTime()
+bg:GetFreeSlotsForTeam(team)
+bg:GetInstanceId()
+bg:GetInstanceID()
+bg:GetMapId()
+bg:GetMapID()
+bg:GetTypeId()
+bg:GetTypeID()
+bg:GetBgTypeId()
+bg:GetBGTypeId()
+bg:GetMaxLevel()
+bg:GetMinLevel()
+bg:GetMaxPlayers()
+bg:GetMinPlayers()
+bg:GetMaxPlayersPerTeam()
+bg:GetMinPlayersPerTeam()
+bg:GetWinner()
+bg:GetStatus()
+bg:IsArena()
+```
+
+说明：
+
+- `GetMap()` 返回当前战场所在的 `Map` 对象；战场实例还未挂接地图时返回 `nil`。
+- `team` 参数使用核心队伍值，联盟/部落和当前服端 `Team` 枚举保持一致。
+- `GetTypeId()` / `GetBgTypeId()` 在 Turtle 里都映射到核心 `GetTypeID()`，用于兼容不同脚本习惯。
+- 战场销毁前事件里仍可以读取这些字段，但不要长期保存 `bg` 对象；回调结束后该核心对象可能马上释放。
+
 ## InstanceData 方法
 
 `map:GetInstanceData()` 会返回当前地图的副本脚本对象，没有副本脚本时返回 `nil`。这个对象映射的是 Turtle/MaNGOS 核心 `InstanceData`，适合读取和修改副本脚本里暴露的数字状态。
@@ -2485,6 +2542,7 @@ end
 - 玩家创建、删除、登录、登出、施法、击杀、被 Creature 击杀、决斗、经验/金币/声望变化、天赋变化、等级变化、聊天、命令、文字表情、保存、副本绑定、Zone/Area/地图变化、队伍掷骰获物、战场逃亡事件。
 - 服务端启动、关闭、Update 事件。
 - 地图创建、销毁、玩家进入/离开、地图 Update 事件，以及按 mapId / instanceId 绑定的副本生命周期事件。
+- 战场创建、开始、结束、销毁前事件和 `BattleGround` 基础对象。
 - NPC 战斗、死亡、重生、AI Update。
 - 按模板 entry 绑定的 Creature 事件，以及按 `ObjectGuid + instanceId` 绑定的唯一 Creature 事件。
 - Creature / GameObject / Item 的任务、Gossip、使用入口。
@@ -2514,7 +2572,7 @@ end
 
 - `WorldPacket` 基础对象封装、客户端入包事件和服务端出包事件已接入；未知包事件 `6` 暂不触发，因为 Turtle 队列阶段会直接跳过无处理 opcode。
 - `ObjectGuid` 已有值对象封装，并已支持 `Map` 按 GUID 反查 Player / Creature / GameObject / DynamicObject / Corpse / Unit / WorldObject，以及 `Player` 按 GUID 反查自己背包或银行里的物品。Creature / GameObject / DynamicObject / Corpse 不做全局离线查找，需要地图上下文。
-- `Creature`、`Player`、`Corpse`、`DynamicObject`、`SpellInfo`、`Group`、`Guild`、`Map`、动态 `Spell`、通用 `Object` 和通用 `WorldObject` 的 3.3.5 参考方法名已补齐或基础接入，不过部分接口按 Turtle 1.12 能力做兼容返回。
+- `Creature`、`Player`、`Corpse`、`DynamicObject`、`SpellInfo`、`Group`、`Guild`、`Map`、`BattleGround`、动态 `Spell`、通用 `Object` 和通用 `WorldObject` 的 3.3.5 参考方法名已补齐或基础接入，不过部分接口按 Turtle 1.12 能力做兼容返回。
 - `ItemTemplate` 的 3.3.5 参考方法名已补齐，其中 `GetIcon()` 因 Turtle 1.12 当前未加载图标路径字段而兼容返回空字符串。
 - 3.3.5 专属成就、竞技场点数、铭文/双天赋、LFG 和部分邮件/拍卖/银行/训练师细节目前仍是兼容返回或空入口，后续需要按 Turtle 1.12 的真实系统单独补强。
 - 3.3.5 玩家事件里 `45` 成就完成和 `50` LFG 入队检查没有 Turtle 1.12 等价系统，当前不接入。

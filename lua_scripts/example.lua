@@ -17,6 +17,23 @@ end)
 --     -- 玩家进入任意地图时触发；正式脚本里建议按 map:GetMapId() 做过滤。
 -- end)
 
+-- 战场事件示例。默认注释掉，避免测试服没有开战时刷日志。
+-- RegisterBGEvent(3, function(event, bg, bgId, instanceId)
+--     print("BG created: " .. bg:GetName() .. " type=" .. bgId .. " instance=" .. instanceId)
+-- end)
+--
+-- RegisterBGEvent(1, function(event, bg, bgId, instanceId)
+--     print("BG started: " .. bg:GetName() .. " status=" .. bg:GetStatus())
+-- end)
+--
+-- RegisterBGEvent(2, function(event, bg, bgId, instanceId, winner)
+--     print("BG ended: " .. bg:GetName() .. " winner=" .. winner)
+-- end)
+--
+-- RegisterBGEvent(4, function(event, bg, bgId, instanceId)
+--     print("BG pre-destroy: " .. bg:GetName() .. " instance=" .. instanceId)
+-- end)
+
 CreateLuaEvent(function(eventId)
     print("Lua timed event " .. eventId .. " is alive")
 end, 60000, 0)
@@ -540,7 +557,7 @@ end)
 --     return true
 -- end)
 --
--- 队伍掷骰获胜并拿到物品后触发。Roll 对象还没有封装，所以 roll 暂时为 nil。
+-- 队伍掷骰获胜并拿到物品后触发。roll 是本次掷骰的 Roll 对象。
 -- RegisterPlayerEvent(56, function(event, player, item, count, voteType, roll)
 --     print(player:GetName() .. " won roll item " .. item:GetEntry() .. " x" .. count .. ", voteType=" .. voteType)
 -- end)
