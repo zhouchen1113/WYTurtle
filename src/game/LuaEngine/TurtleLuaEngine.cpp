@@ -35,6 +35,7 @@
 #include "Objects/Bag.h"
 #include "Objects/GameObject.h"
 #include "Objects/Item.h"
+#include "Objects/Pet.h"
 #include "Objects/Player.h"
 #include "Objects/Unit.h"
 #include "Database/DBCStores.h"
@@ -59,6 +60,7 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <optional>
 #include <shared_mutex>
 #include <sstream>
 #include <thread>
@@ -102,6 +104,77 @@ constexpr char const* OBJECTGUID_METATABLE = "Turtle.ObjectGuid";
 constexpr char const* CHATHANDLER_METATABLE = "Turtle.ChatHandler";
 constexpr char const* CHANNEL_METATABLE = "Turtle.Channel";
 constexpr char const* ROLL_METATABLE = "Turtle.Roll";
+
+uint32 HashLuaPlayerSettingKey(char const* source, uint32 index)
+{
+    uint32 hash = 2166136261u;
+    auto mix = [&hash](uint8 value)
+    {
+        hash ^= value;
+        hash *= 16777619u;
+    };
+
+    char const prefix[] = "eluna.player_setting";
+    for (char c : prefix)
+        mix(static_cast<uint8>(c));
+
+    mix(0);
+    if (source)
+        for (char const* itr = source; *itr; ++itr)
+            mix(static_cast<uint8>(*itr));
+
+    mix(0);
+    for (uint32 shift = 0; shift < 32; shift += 8)
+        mix(static_cast<uint8>((index >> shift) & 0xFF));
+
+    return 0x80000000u | (hash & 0x7FFFFFFFu);
+}
+
+PlayerVariables LuaPlayerSettingVariable(char const* source, uint32 index)
+{
+    return static_cast<PlayerVariables>(HashLuaPlayerSettingKey(source, index));
+}
+
+uint32 LuaPlayerSettingValue(Player* player, char const* source, uint32 index)
+{
+    if (!player)
+        return 0;
+
+    std::optional<std::string> value = player->GetPlayerVariable(LuaPlayerSettingVariable(source, index));
+    if (!value)
+        return 0;
+
+    char* end = nullptr;
+    unsigned long parsed = std::strtoul(value->c_str(), &end, 10);
+    if (end == value->c_str())
+        return 0;
+
+    if (parsed > std::numeric_limits<uint32>::max())
+        return std::numeric_limits<uint32>::max();
+
+    return static_cast<uint32>(parsed);
+}
+
+uint32 CountCurrentTalentSpells(Player* player)
+{
+    if (!player)
+        return 0;
+
+    uint32 count = 0;
+    uint32 numRows = sTalentStore.GetNumRows();
+    for (uint32 talentId = 0; talentId < numRows; ++talentId)
+    {
+        TalentEntry const* talent = sTalentStore.LookupEntry(talentId);
+        if (!talent)
+            continue;
+
+        for (uint32 rank = 0; rank < MAX_TALENT_RANK; ++rank)
+            if (talent->RankID[rank] && player->HasSpell(talent->RankID[rank]))
+                ++count;
+    }
+
+    return count;
+}
 
 uint32 ToElunaChatType(uint32 type)
 {
@@ -5536,6 +5609,46 @@ int PlayerAddTalent(lua_State* state)
     return 1;
 }
 
+int PlayerAddBonusTalent(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    uint32 count = static_cast<uint32>(luaL_checkinteger(state, 2));
+    if (player)
+    {
+        uint32 current = player->GetFreeTalentPoints();
+        player->SetFreeTalentPoints(count > std::numeric_limits<uint32>::max() - current ? std::numeric_limits<uint32>::max() : current + count);
+    }
+    return 0;
+}
+
+int PlayerRemoveBonusTalent(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    uint32 count = static_cast<uint32>(luaL_checkinteger(state, 2));
+    if (player)
+    {
+        uint32 current = player->GetFreeTalentPoints();
+        player->SetFreeTalentPoints(count >= current ? 0 : current - count);
+    }
+    return 0;
+}
+
+int PlayerGetBonusTalentCount(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    lua_pushinteger(state, player ? player->GetFreeTalentPoints() : 0);
+    return 1;
+}
+
+int PlayerSetBonusTalentCount(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    uint32 count = static_cast<uint32>(luaL_checkinteger(state, 2));
+    if (player)
+        player->SetFreeTalentPoints(count);
+    return 0;
+}
+
 int PlayerResetTalents(lua_State* state)
 {
     Player* player = CheckPlayer(state, 1);
@@ -5700,6 +5813,107 @@ int PlayerCompatReturnNil(lua_State* state)
 {
     (void)CheckPlayer(state, 1);
     lua_pushnil(state);
+    return 1;
+}
+
+int PlayerBindToInstance(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    bool permanent = lua_isnoneornil(state, 2) ? true : lua_toboolean(state, 2) != 0;
+
+    if (!player || !player->GetMap() || !player->GetMap()->IsDungeon())
+        return 0;
+
+    DungeonMap* dungeon = dynamic_cast<DungeonMap*>(player->GetMap());
+    if (!dungeon)
+        return 0;
+
+    if (DungeonPersistentState* save = dungeon->GetPersistanceState())
+    {
+        if (Group* group = player->GetGroup())
+        {
+            if (group->IsLeader(player->GetObjectGuid()))
+                group->BindToInstance(save, permanent);
+            else
+                player->BindToInstance(save, permanent);
+        }
+        else
+            player->BindToInstance(save, permanent);
+    }
+
+    return 0;
+}
+
+int PlayerGetActiveSpec(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    if (!player)
+    {
+        lua_pushinteger(state, 0);
+        return 1;
+    }
+
+    uint32 currentTalentCount = CountCurrentTalentSpells(player);
+    if (!currentTalentCount)
+    {
+        lua_pushinteger(state, 0);
+        return 1;
+    }
+
+    uint32 savedCount[4] = {0, 0, 0, 0};
+    uint32 matchedCount[4] = {0, 0, 0, 0};
+    std::unique_ptr<QueryResult> result(CharacterDatabase.PQuery("SELECT `spell`, `spec` FROM `character_spell_dual_spec` WHERE `guid` = '%u'", player->GetGUIDLow()));
+    if (result)
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 spellId = fields[0].GetUInt32();
+            uint32 spec = fields[1].GetUInt32();
+            if (spec < 1 || spec > 4)
+                continue;
+
+            uint32 index = spec - 1;
+            ++savedCount[index];
+            if (player->HasSpell(spellId))
+                ++matchedCount[index];
+        }
+        while (result->NextRow());
+    }
+
+    for (uint32 index = 0; index < 4; ++index)
+    {
+        if (savedCount[index] && savedCount[index] == matchedCount[index] && savedCount[index] == currentTalentCount)
+        {
+            lua_pushinteger(state, index);
+            return 1;
+        }
+    }
+
+    lua_pushinteger(state, 0);
+    return 1;
+}
+
+int PlayerUpdatePlayerSetting(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    char const* source = luaL_checkstring(state, 2);
+    uint32 index = static_cast<uint32>(luaL_checkinteger(state, 3));
+    uint32 value = static_cast<uint32>(luaL_checkinteger(state, 4));
+
+    if (player)
+        player->SetPlayerVariable(LuaPlayerSettingVariable(source, index), std::to_string(value));
+
+    return 0;
+}
+
+int PlayerGetPlayerSettingValue(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    char const* source = luaL_checkstring(state, 2);
+    uint32 index = static_cast<uint32>(luaL_checkinteger(state, 3));
+
+    lua_pushinteger(state, LuaPlayerSettingValue(player, source, index));
     return 1;
 }
 
@@ -7809,6 +8023,31 @@ int PlayerRemovePet(lua_State* state)
 
     if (player && player->GetPet())
         player->RemovePet(PetSaveMode(mode));
+
+    return 0;
+}
+
+int PlayerResetPetTalents(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    Pet* pet = player ? player->GetPet() : nullptr;
+    if (!player || !pet)
+        return 0;
+
+    for (PetSpellMap::iterator itr = pet->m_petSpells.begin(); itr != pet->m_petSpells.end();)
+    {
+        uint32 spellId = itr->first;
+        ++itr;
+        pet->unlearnSpell(spellId, false);
+    }
+
+    uint32 loyalty = pet->GetLoyaltyLevel();
+    pet->SetTP(pet->GetLevel() * (loyalty > 0 ? loyalty - 1 : 0));
+    pet->CleanupActionBar();
+    pet->LearnPetPassives();
+    pet->m_resetTalentsTime = time(nullptr);
+    pet->m_resetTalentsCost = 0;
+    player->PetSpellInitialize();
 
     return 0;
 }
@@ -17732,17 +17971,17 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "GetGuild", &PlayerGetGuild);
     SetMethod(_state, "GetGuildName", &PlayerGetGuildName);
     SetMethod(_state, "AddTalent", &PlayerAddTalent);
-    SetMethod(_state, "AddBonusTalent", &PlayerCompatNoop);
-    SetMethod(_state, "BindToInstance", &PlayerCompatNoop);
+    SetMethod(_state, "AddBonusTalent", &PlayerAddBonusTalent);
+    SetMethod(_state, "BindToInstance", &PlayerBindToInstance);
     SetMethod(_state, "CanFlyInZone", &PlayerCanFlyInZone);
     SetMethod(_state, "CanTitanGrip", &PlayerCompatReturnFalse);
     SetMethod(_state, "CanUninviteFromGroup", &PlayerCanUninviteFromGroup);
     SetMethod(_state, "EquipItem", &PlayerEquipItem);
     SetMethod(_state, "GetAchievementCriteriaProgress", &PlayerCompatReturnNil);
     SetMethod(_state, "GetAchievementPoints", &PlayerCompatReturnZero);
-    SetMethod(_state, "GetActiveSpec", &PlayerCompatReturnZero);
+    SetMethod(_state, "GetActiveSpec", &PlayerGetActiveSpec);
     SetMethod(_state, "GetArenaPoints", &PlayerCompatReturnZero);
-    SetMethod(_state, "GetBonusTalentCount", &PlayerCompatReturnZero);
+    SetMethod(_state, "GetBonusTalentCount", &PlayerGetBonusTalentCount);
     SetMethod(_state, "GetChampioningFaction", &PlayerCompatReturnZero);
     SetMethod(_state, "GetCompletedAchievementsCount", &PlayerCompatReturnZero);
     SetMethod(_state, "GetCompletedQuestsCount", &PlayerGetCompletedQuestsCount);
@@ -17757,7 +17996,7 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "GetManaBonusFromIntellect", &PlayerGetManaBonusFromIntellect);
     SetMethod(_state, "GetNextRandomRaidMember", &PlayerGetNextRandomRaidMember);
     SetMethod(_state, "GetPhaseMaskForSpawn", &PlayerGetPhaseMaskForSpawn);
-    SetMethod(_state, "GetPlayerSettingValue", &PlayerCompatReturnZero);
+    SetMethod(_state, "GetPlayerSettingValue", &PlayerGetPlayerSettingValue);
     SetMethod(_state, "GetRecruiterId", &PlayerCompatReturnZero);
     SetMethod(_state, "GetShieldBlockValue", &PlayerGetShieldBlockValue);
     SetMethod(_state, "GetSpecsCount", &PlayerGetSpecsCount);
@@ -17786,13 +18025,13 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "ModifyArenaPoints", &PlayerCompatNoop);
     SetMethod(_state, "ModifyHonorPoints", &PlayerModifyHonorPoints);
     SetMethod(_state, "Mute", &PlayerMute);
-    SetMethod(_state, "RemoveBonusTalent", &PlayerCompatNoop);
+    SetMethod(_state, "RemoveBonusTalent", &PlayerRemoveBonusTalent);
     SetMethod(_state, "RemovedInsignia", &PlayerRemovedInsignia);
     SetMethod(_state, "RemoveFromBattlegroundRaid", &PlayerRemoveFromBattlegroundRaid);
     SetMethod(_state, "RemoveFromGroup", &PlayerRemoveFromGroup);
     SetMethod(_state, "ResetAchievements", &PlayerCompatNoop);
     SetMethod(_state, "RemovePet", &PlayerRemovePet);
-    SetMethod(_state, "ResetPetTalents", &PlayerCompatNoop);
+    SetMethod(_state, "ResetPetTalents", &PlayerResetPetTalents);
     SetMethod(_state, "ResetTalentsCost", &PlayerResetTalentsCost);
     SetMethod(_state, "ResetTypeCooldowns", &PlayerResetTypeCooldowns);
     SetMethod(_state, "RunCommand", &PlayerRunCommand);
@@ -17810,7 +18049,7 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "SendTrainerList", &PlayerSendTrainerList);
     SetMethod(_state, "SetAchievement", &PlayerCompatNoop);
     SetMethod(_state, "SetArenaPoints", &PlayerCompatNoop);
-    SetMethod(_state, "SetBonusTalentCount", &PlayerCompatNoop);
+    SetMethod(_state, "SetBonusTalentCount", &PlayerSetBonusTalentCount);
     SetMethod(_state, "SetFactionForRace", &PlayerSetFactionForRace);
     SetMethod(_state, "SetGender", &PlayerSetGender);
     SetMethod(_state, "SetGlyph", &PlayerCompatNoop);
@@ -17826,7 +18065,7 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "UnbindAllInstances", &PlayerUnbindAllInstances);
     SetMethod(_state, "UnbindInstance", &PlayerUnbindInstance);
     SetMethod(_state, "UnsetKnownTitle", &PlayerUnsetKnownTitle);
-    SetMethod(_state, "UpdatePlayerSetting", &PlayerCompatNoop);
+    SetMethod(_state, "UpdatePlayerSetting", &PlayerUpdatePlayerSetting);
     SetMethod(_state, "Whisper", &PlayerWhisper);
     SetMethod(_state, "GetTrader", &PlayerGetTrader);
     SetMethod(_state, "HasSkill", &PlayerHasSkill);
