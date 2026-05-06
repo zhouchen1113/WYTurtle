@@ -35,6 +35,7 @@
 #include "Spell.h"
 #include "Spells/SpellAuras.h"
 #include "SpellMgr.h"
+#include "SystemConfig.h"
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
@@ -1195,7 +1196,7 @@ int LuaReloadEluna(lua_State* state)
     return 0;
 }
 
-int LuaPrint(lua_State* state)
+std::string LuaStackToString(lua_State* state)
 {
     int argc = lua_gettop(state);
     std::string message;
@@ -1210,6 +1211,214 @@ int LuaPrint(lua_State* state)
         lua_pop(state, 1);
     }
 
+    return message;
+}
+
+void LuaCommandPrint(std::any, char const* text)
+{
+    if (text && *text)
+        sLog.outString("[Lua] %s", text);
+}
+
+void LuaCommandFinished(std::any, bool success)
+{
+    if (!success)
+        sLog.outError("[Lua] RunCommand finished with errors");
+}
+
+int LuaGetLuaEngine(lua_State* state)
+{
+    lua_pushstring(state, "ElunaEngine");
+    return 1;
+}
+
+int LuaGetCoreName(lua_State* state)
+{
+    lua_pushstring(state, "Turtle WoW");
+    return 1;
+}
+
+int LuaGetRealmID(lua_State* state)
+{
+    lua_pushinteger(state, realmID ? realmID : sConfig.GetIntDefault("RealmID", 1));
+    return 1;
+}
+
+int LuaGetCoreVersion(lua_State* state)
+{
+    lua_pushstring(state, _FULLVERSION);
+    return 1;
+}
+
+int LuaGetCoreExpansion(lua_State* state)
+{
+    lua_pushinteger(state, 0);
+    return 1;
+}
+
+int LuaGetStateMap(lua_State* state)
+{
+    lua_pushnil(state);
+    return 1;
+}
+
+int LuaGetStateMapId(lua_State* state)
+{
+    lua_pushinteger(state, -1);
+    return 1;
+}
+
+int LuaGetStateInstanceId(lua_State* state)
+{
+    lua_pushinteger(state, 0);
+    return 1;
+}
+
+int LuaIsCompatibilityMode(lua_State* state)
+{
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+int LuaBitAnd(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 b = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, static_cast<lua_Integer>(a & b));
+    return 1;
+}
+
+int LuaBitOr(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 b = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, static_cast<lua_Integer>(a | b));
+    return 1;
+}
+
+int LuaBitLShift(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 shift = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, static_cast<lua_Integer>(shift >= 32 ? 0 : (a << shift)));
+    return 1;
+}
+
+int LuaBitRShift(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 shift = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, static_cast<lua_Integer>(shift >= 32 ? 0 : (a >> shift)));
+    return 1;
+}
+
+int LuaBitXor(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 b = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, static_cast<lua_Integer>(a ^ b));
+    return 1;
+}
+
+int LuaBitNot(lua_State* state)
+{
+    uint32 a = static_cast<uint32>(luaL_checkinteger(state, 1));
+    lua_pushinteger(state, static_cast<lua_Integer>(~a));
+    return 1;
+}
+
+int LuaGetCurrTime(lua_State* state)
+{
+    lua_pushinteger(state, WorldTimer::getMSTime());
+    return 1;
+}
+
+int LuaGetTimeDiff(lua_State* state)
+{
+    uint32 oldTime = static_cast<uint32>(luaL_checkinteger(state, 1));
+    lua_pushinteger(state, WorldTimer::getMSTimeDiffToNow(oldTime));
+    return 1;
+}
+
+int LuaIsInventoryPos(lua_State* state)
+{
+    uint8 bag = static_cast<uint8>(luaL_checkinteger(state, 1));
+    uint8 slot = static_cast<uint8>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, Player::IsInventoryPos(bag, slot));
+    return 1;
+}
+
+int LuaIsEquipmentPos(lua_State* state)
+{
+    uint8 bag = static_cast<uint8>(luaL_checkinteger(state, 1));
+    uint8 slot = static_cast<uint8>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, Player::IsEquipmentPos(bag, slot));
+    return 1;
+}
+
+int LuaIsBankPos(lua_State* state)
+{
+    uint8 bag = static_cast<uint8>(luaL_checkinteger(state, 1));
+    uint8 slot = static_cast<uint8>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, Player::IsBankPos(bag, slot));
+    return 1;
+}
+
+int LuaIsBagPos(lua_State* state)
+{
+    uint8 bag = static_cast<uint8>(luaL_checkinteger(state, 1));
+    uint8 slot = static_cast<uint8>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, Player::IsBagPos(static_cast<uint16>((bag << 8) | slot)));
+    return 1;
+}
+
+int LuaPrintInfo(lua_State* state)
+{
+    std::string message = LuaStackToString(state);
+    sLog.outInfo("[Lua] %s", message.c_str());
+    return 0;
+}
+
+int LuaPrintError(lua_State* state)
+{
+    std::string message = LuaStackToString(state);
+    sLog.outError("[Lua] %s", message.c_str());
+    return 0;
+}
+
+int LuaPrintDebug(lua_State* state)
+{
+    std::string message = LuaStackToString(state);
+    sLog.outDebug("[Lua] %s", message.c_str());
+    return 0;
+}
+
+int LuaRunCommand(lua_State* state)
+{
+    std::string command = luaL_checkstring(state, 1);
+    if (!command.empty())
+    {
+        if (command[0] == '.' || command[0] == '!')
+            command.erase(command.begin());
+
+        sWorld.QueueCliCommand(new CliCommandHolder(0, SEC_CONSOLE, nullptr, command.c_str(), &LuaCommandPrint, &LuaCommandFinished));
+    }
+
+    return 0;
+}
+
+int LuaRemoveEvents(lua_State* state)
+{
+    bool allEvents = lua_isnoneornil(state, 1) ? false : lua_toboolean(state, 1) != 0;
+    if (TurtleLuaEngine* engine = GetEngine(state))
+        engine->RemoveTimedEvents(allEvents);
+
+    return 0;
+}
+
+int LuaPrint(lua_State* state)
+{
+    std::string message = LuaStackToString(state);
     sLog.outString("[Lua] %s", message.c_str());
     return 0;
 }
@@ -14751,9 +14960,32 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "ClearCreatureGossipEvents", &LuaClearCreatureGossipEvents);
     lua_register(_state, "ClearGameObjectGossipEvents", &LuaClearGameObjectGossipEvents);
     lua_register(_state, "ClearItemGossipEvents", &LuaClearItemGossipEvents);
+    lua_register(_state, "GetLuaEngine", &LuaGetLuaEngine);
+    lua_register(_state, "GetCoreName", &LuaGetCoreName);
+    lua_register(_state, "GetRealmID", &LuaGetRealmID);
+    lua_register(_state, "GetCoreVersion", &LuaGetCoreVersion);
+    lua_register(_state, "GetCoreExpansion", &LuaGetCoreExpansion);
+    lua_register(_state, "GetStateMap", &LuaGetStateMap);
+    lua_register(_state, "GetStateMapId", &LuaGetStateMapId);
+    lua_register(_state, "GetStateInstanceId", &LuaGetStateInstanceId);
+    lua_register(_state, "IsCompatibilityMode", &LuaIsCompatibilityMode);
+    lua_register(_state, "bit_and", &LuaBitAnd);
+    lua_register(_state, "bit_or", &LuaBitOr);
+    lua_register(_state, "bit_lshift", &LuaBitLShift);
+    lua_register(_state, "bit_rshift", &LuaBitRShift);
+    lua_register(_state, "bit_xor", &LuaBitXor);
+    lua_register(_state, "bit_not", &LuaBitNot);
+    lua_register(_state, "GetCurrTime", &LuaGetCurrTime);
+    lua_register(_state, "GetTimeDiff", &LuaGetTimeDiff);
+    lua_register(_state, "IsInventoryPos", &LuaIsInventoryPos);
+    lua_register(_state, "IsEquipmentPos", &LuaIsEquipmentPos);
+    lua_register(_state, "IsBankPos", &LuaIsBankPos);
+    lua_register(_state, "IsBagPos", &LuaIsBagPos);
     lua_register(_state, "CreateLuaEvent", &LuaCreateLuaEvent);
     lua_register(_state, "RemoveEventById", &LuaRemoveEventById);
+    lua_register(_state, "RemoveEvents", &LuaRemoveEvents);
     lua_register(_state, "ReloadEluna", &LuaReloadEluna);
+    lua_register(_state, "RunCommand", &LuaRunCommand);
     lua_register(_state, "GetPlayerByName", &LuaGetPlayerByName);
     lua_register(_state, "GetPlayerByGUID", &LuaGetPlayerByGUID);
     lua_register(_state, "GetPlayerByGUIDLow", &LuaGetPlayerByGUIDLow);
@@ -14798,6 +15030,9 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "CharacterDBExecute", &LuaCharDBExecute);
     lua_register(_state, "AuthDBExecute", &LuaLoginDBExecute);
     lua_register(_state, "LoginDBExecute", &LuaLoginDBExecute);
+    lua_register(_state, "PrintInfo", &LuaPrintInfo);
+    lua_register(_state, "PrintError", &LuaPrintError);
+    lua_register(_state, "PrintDebug", &LuaPrintDebug);
     lua_register(_state, "print", &LuaPrint);
 
     SetGlobalInteger(_state, "HIGHGUID_ITEM", HIGHGUID_ITEM);
@@ -17351,6 +17586,25 @@ uint32 TurtleLuaEngine::RemoveTimedEventsForObject(ObjectGuid const& objectGuid)
     for (auto itr = _timedEvents.begin(); itr != _timedEvents.end();)
     {
         if (itr->hasObject && itr->objectGuid == objectGuid)
+        {
+            if (_state)
+                luaL_unref(_state, LUA_REGISTRYINDEX, itr->functionRef);
+            itr = _timedEvents.erase(itr);
+            ++removed;
+        }
+        else
+            ++itr;
+    }
+
+    return removed;
+}
+
+uint32 TurtleLuaEngine::RemoveTimedEvents(bool allEvents)
+{
+    uint32 removed = 0;
+    for (auto itr = _timedEvents.begin(); itr != _timedEvents.end();)
+    {
+        if (allEvents || !itr->hasObject)
         {
             if (_state)
                 luaL_unref(_state, LUA_REGISTRYINDEX, itr->functionRef);

@@ -342,6 +342,7 @@ public:
     bool RemoveTimedEvent(uint32 eventId);
     bool RemoveTimedEventForObject(uint32 eventId, ObjectGuid const& objectGuid);
     uint32 RemoveTimedEventsForObject(ObjectGuid const& objectGuid);
+    uint32 RemoveTimedEvents(bool allEvents);
 
 private:
     struct TimedEvent

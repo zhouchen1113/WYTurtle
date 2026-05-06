@@ -69,6 +69,7 @@ E:\TurtleBY
 - Channel 基础对象封装：玩家频道聊天事件 `22` 现在按 3.3.5 Eluna 风格继续传频道数字 ID，并额外追加 `Channel` 对象；对象可读取频道名、频道 ID、人数、flags、安全等级、阵营、密码和成员状态，也能设置公告/密码/安全等级、设置成员主持/禁言、广播包或发送频道消息。
 - DynamicObject 基础对象封装：地图按 GUID 反查和通用 `WorldObject` 返回路径现在可以返回 `DynamicObject` 对象；脚本可读取施法者、施法者 GUID、法术 ID、效果索引、持续时间、半径和动态对象类型，也可调用 `Delay()` / `Delete()`。
 - ElunaQuery 数据库结果对象：`WorldDBQuery` / `CharDBQuery` / `AuthDBQuery` 等现在返回 `ElunaQuery` 对象，支持 3.3.5 Eluna 风格的 `GetUInt32(0)`、`GetString(0)`、`NextRow()`、`GetRow()` 等对象方法；列下标按 Eluna 从 `0` 开始。
+- 全局兼容函数补齐：新增核心信息、Lua 状态信息、bit 位运算、毫秒时间、背包位置判断、日志打印、全局命令执行和全局定时事件清理入口。`GetCoreExpansion()` 按 Turtle 1.12 返回 `0`，`GetStateMap()` / `GetStateMapId()` / `GetStateInstanceId()` 按当前单 Lua 状态返回 `nil` / `-1` / `0`，`IsCompatibilityMode()` 返回 `true`。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -126,9 +127,32 @@ ClearSpellEvents(spellId, [eventId])
 ClearCreatureGossipEvents(entry, [eventId])
 ClearGameObjectGossipEvents(entry, [eventId])
 ClearItemGossipEvents(entry, [eventId])
+GetLuaEngine()
+GetCoreName()
+GetRealmID()
+GetCoreVersion()
+GetCoreExpansion()
+GetStateMap()
+GetStateMapId()
+GetStateInstanceId()
+IsCompatibilityMode()
+bit_and(a, b)
+bit_or(a, b)
+bit_lshift(a, b)
+bit_rshift(a, b)
+bit_xor(a, b)
+bit_not(a)
+GetCurrTime()
+GetTimeDiff(oldTime)
+IsInventoryPos(bag, slot)
+IsEquipmentPos(bag, slot)
+IsBankPos(bag, slot)
+IsBagPos(bag, slot)
 CreateLuaEvent(function, delayMs, repeats)
 RemoveEventById(eventId)
+RemoveEvents([allEvents])
 ReloadEluna()
+RunCommand(command)
 GetPlayerByName(name)
 GetPlayerByGUID(guidOrGuidLow)
 GetPlayerByGUIDLow(guidLow)
@@ -174,6 +198,9 @@ CharDBExecute(sql)
 CharacterDBExecute(sql)
 AuthDBExecute(sql)
 LoginDBExecute(sql)
+PrintInfo(...)
+PrintError(...)
+PrintDebug(...)
 print(...)
 ```
 
@@ -181,6 +208,11 @@ print(...)
 
 - `CreateLuaEvent(function, delayMs, repeats)` 返回定时器 ID。
 - `repeats = 0` 表示无限重复。
+- `RemoveEvents(false)` 只清理全局 `CreateLuaEvent` 创建的定时事件；`RemoveEvents(true)` 会连同对象绑定事件一起清理。
+- `RunCommand(command)` 按控制台权限把 GM 命令加入世界线程队列执行，命令前面的 `.` / `!` 可以带也可以不带。
+- `GetLuaEngine()` 为兼容旧 Eluna 脚本返回 `ElunaEngine`；`GetCoreName()` 返回 `Turtle WoW`；`GetCoreExpansion()` 在 Turtle 1.12 下返回 `0`。
+- `GetCurrTime()` 返回服务器毫秒计时，`GetTimeDiff(oldTime)` 返回 `oldTime` 到当前的毫秒差。
+- `PrintInfo` / `PrintError` / `PrintDebug` 分别写入 info、error、debug 日志；`print(...)` 仍写普通 Lua 日志。
 - `GetPlayersInWorld()` 返回当前在线且在世界中的玩家对象数组。
 - `GetPlayerCount()` 返回当前在线且在世界中的玩家数量。
 - `GetMapById(mapId, instanceId)` 只查找已经加载的地图，找不到时返回 `nil`。
