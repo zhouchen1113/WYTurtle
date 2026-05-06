@@ -24457,6 +24457,30 @@ void TurtleLuaEngine::OnCreatureRemove(Creature* creature)
     lua_pushinteger(_state, CREATURE_EVENT_ON_REMOVE);
     PushCreature(creature);
     CallCreatureEvent(creature, CREATURE_EVENT_ON_REMOVE, 2);
+
+    auto itr = _serverEvents.find(WORLD_EVENT_ON_DELETE_CREATURE);
+    if (itr == _serverEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, WORLD_EVENT_ON_DELETE_CREATURE);
+        PushCreature(creature);
+
+        if (lua_pcall(_state, 2, 0, 0) != LUA_OK)
+        {
+            LogError("creature delete event");
+            lua_pop(_state, 1);
+        }
+    }
 }
 
 bool TurtleLuaEngine::OnCreatureReachWP(Creature* creature, uint32 type, uint32 id)
@@ -25355,6 +25379,30 @@ void TurtleLuaEngine::OnGameObjectRemove(GameObject* go)
     lua_pushinteger(_state, GAMEOBJECT_EVENT_ON_REMOVE);
     PushGameObject(go);
     CallEntryEvent(_gameObjectEvents, go->GetEntry(), GAMEOBJECT_EVENT_ON_REMOVE, 2);
+
+    auto itr = _serverEvents.find(WORLD_EVENT_ON_DELETE_GAMEOBJECT);
+    if (itr == _serverEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, WORLD_EVENT_ON_DELETE_GAMEOBJECT);
+        PushGameObject(go);
+
+        if (lua_pcall(_state, 2, 0, 0) != LUA_OK)
+        {
+            LogError("gameobject delete event");
+            lua_pop(_state, 1);
+        }
+    }
 }
 
 void TurtleLuaEngine::OnGameObjectDestroyed(GameObject* go, WorldObject* attacker)
