@@ -4,6 +4,12 @@ RegisterServerEvent(14, function(event)
     print("Lua server startup event fired")
 end)
 
+-- 所有 Register*Event 现在都会返回取消函数；第三/第四/第五个 shots 参数按函数类型决定。
+-- local cancelOnce = RegisterPlayerEvent(3, function(event, player)
+--     player:SendBroadcastMessage("这个提示只会触发一次。")
+-- end, 1)
+-- cancelOnce() -- 需要提前停用时调用。
+
 -- 异步数据库查询示例。callback 会回到 Lua 世界线程执行；无结果时 query 为 nil。
 -- WorldDBQueryAsync("SELECT entry, name FROM creature_template LIMIT 1", function(query)
 --     if query then

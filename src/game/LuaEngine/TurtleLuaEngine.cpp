@@ -55,6 +55,7 @@
 #include <exception>
 #include <filesystem>
 #include <list>
+#include <limits>
 #include <memory>
 #include <new>
 #include <shared_mutex>
@@ -1072,6 +1073,94 @@ GameObject* SelectNearestGameObject(WorldObject* object, std::list<GameObject*> 
     return nearest;
 }
 
+uint32 ReadEventShots(lua_State* state, int index)
+{
+    if (lua_isnoneornil(state, index))
+        return 0;
+
+    lua_Integer shots = luaL_checkinteger(state, index);
+    if (shots <= 0)
+        return 0;
+
+    lua_Integer maxShots = static_cast<lua_Integer>((std::numeric_limits<uint32>::max)());
+    return static_cast<uint32>(shots > maxShots ? maxShots : shots);
+}
+
+int LuaEventDispatchWrapper(lua_State* state)
+{
+    int argCount = lua_gettop(state);
+
+    lua_getfield(state, lua_upvalueindex(1), "active");
+    bool active = lua_toboolean(state, -1) != 0;
+    lua_pop(state, 1);
+    if (!active)
+        return 0;
+
+    lua_getfield(state, lua_upvalueindex(1), "shots");
+    lua_Integer shots = lua_tointeger(state, -1);
+    lua_pop(state, 1);
+
+    if (shots > 0)
+    {
+        if (shots == 1)
+        {
+            lua_pushboolean(state, false);
+            lua_setfield(state, lua_upvalueindex(1), "active");
+        }
+        else
+        {
+            lua_pushinteger(state, shots - 1);
+            lua_setfield(state, lua_upvalueindex(1), "shots");
+        }
+    }
+
+    lua_getfield(state, lua_upvalueindex(1), "function");
+    if (!lua_isfunction(state, -1))
+    {
+        lua_pop(state, 1);
+        return 0;
+    }
+
+    lua_insert(state, 1);
+    lua_call(state, argCount, LUA_MULTRET);
+    return lua_gettop(state);
+}
+
+int LuaEventCancelWrapper(lua_State* state)
+{
+    lua_pushboolean(state, false);
+    lua_setfield(state, lua_upvalueindex(1), "active");
+    return 0;
+}
+
+int CreateEventFunctionRefAndCancel(lua_State* state, int functionIndex, uint32 shots)
+{
+    luaL_checktype(state, functionIndex, LUA_TFUNCTION);
+    functionIndex = lua_absindex(state, functionIndex);
+
+    lua_newtable(state);
+    int handleIndex = lua_gettop(state);
+
+    lua_pushvalue(state, functionIndex);
+    lua_setfield(state, handleIndex, "function");
+
+    lua_pushinteger(state, shots);
+    lua_setfield(state, handleIndex, "shots");
+
+    lua_pushboolean(state, true);
+    lua_setfield(state, handleIndex, "active");
+
+    lua_pushvalue(state, handleIndex);
+    lua_pushcclosure(state, &LuaEventDispatchWrapper, 1);
+    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+
+    lua_pushvalue(state, handleIndex);
+    lua_pushcclosure(state, &LuaEventCancelWrapper, 1);
+    lua_remove(state, handleIndex);
+
+    return functionRef;
+}
+
 int LuaRegisterPlayerEvent(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -1079,11 +1168,9 @@ int LuaRegisterPlayerEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterPlayerEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterServerEvent(lua_State* state)
@@ -1093,11 +1180,9 @@ int LuaRegisterServerEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterServerEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterGroupEvent(lua_State* state)
@@ -1107,11 +1192,9 @@ int LuaRegisterGroupEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterGroupEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterGuildEvent(lua_State* state)
@@ -1121,11 +1204,9 @@ int LuaRegisterGuildEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterGuildEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterBGEvent(lua_State* state)
@@ -1135,11 +1216,9 @@ int LuaRegisterBGEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterBattleGroundEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterTicketEvent(lua_State* state)
@@ -1149,11 +1228,9 @@ int LuaRegisterTicketEvent(lua_State* state)
         return luaL_error(state, "Lua engine is not available");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
-    luaL_checktype(state, 2, LUA_TFUNCTION);
-    lua_pushvalue(state, 2);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 2, ReadEventShots(state, 3));
     engine->RegisterTicketEvent(eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterPacketEvent(lua_State* state)
@@ -1167,11 +1244,9 @@ int LuaRegisterPacketEvent(lua_State* state)
         return luaL_argerror(state, 1, "valid opcode expected");
 
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 2));
-    luaL_checktype(state, 3, LUA_TFUNCTION);
-    lua_pushvalue(state, 3);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 3, ReadEventShots(state, 4));
     engine->RegisterPacketEvent(opcode, eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int RegisterEntryEvent(lua_State* state, void (TurtleLuaEngine::*registrar)(uint32, uint32, int))
@@ -1182,11 +1257,9 @@ int RegisterEntryEvent(lua_State* state, void (TurtleLuaEngine::*registrar)(uint
 
     uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 2));
-    luaL_checktype(state, 3, LUA_TFUNCTION);
-    lua_pushvalue(state, 3);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 3, ReadEventShots(state, 4));
     (engine->*registrar)(entry, eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterCreatureEvent(lua_State* state)
@@ -1213,11 +1286,9 @@ int LuaRegisterUniqueCreatureEvent(lua_State* state)
     ObjectGuid guid = CheckObjectGuidValue(state, 1);
     uint32 instanceId = static_cast<uint32>(luaL_checkinteger(state, 2));
     uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 3));
-    luaL_checktype(state, 4, LUA_TFUNCTION);
-    lua_pushvalue(state, 4);
-    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    int functionRef = CreateEventFunctionRefAndCancel(state, 4, ReadEventShots(state, 5));
     engine->RegisterUniqueCreatureEvent(guid, instanceId, eventId, functionRef);
-    return 0;
+    return 1;
 }
 
 int LuaRegisterGameObjectEvent(lua_State* state)

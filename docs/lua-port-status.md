@@ -70,6 +70,7 @@ E:\TurtleBY
 - DynamicObject 基础对象封装：地图按 GUID 反查和通用 `WorldObject` 返回路径现在可以返回 `DynamicObject` 对象；脚本可读取施法者、施法者 GUID、法术 ID、效果索引、持续时间、半径和动态对象类型，也可调用 `Delay()` / `Delete()`。
 - ElunaQuery 数据库结果对象：`WorldDBQuery` / `CharDBQuery` / `AuthDBQuery` 等现在返回 `ElunaQuery` 对象，支持 3.3.5 Eluna 风格的 `GetUInt32(0)`、`GetString(0)`、`NextRow()`、`GetRow()` 等对象方法；列下标按 Eluna 从 `0` 开始。`WorldDBQueryAsync` / `CharDBQueryAsync` / `AuthDBQueryAsync` 也已接入，数据库线程完成后会切回 Lua 世界线程调用 callback。
 - HTTP 请求：`HttpRequest` 已按 3.3.5 Eluna 参数形式接入，HTTP 工作在线程里执行，完成后回到 Lua 世界线程调用 `(status, body, headers)` callback。
+- 事件注册语义补齐：所有全局 `Register*Event` 现在都支持可选 `shots` 参数并返回取消函数；`shots = 0` 或不填表示永久有效，`shots > 0` 表示触发指定次数后自动停用，返回的取消函数可手动停用这次注册。
 - 全局兼容函数补齐：新增核心信息、Lua 状态信息、bit 位运算、毫秒时间、背包位置判断、日志打印、全局命令执行和全局定时事件清理入口。`GetCoreExpansion()` 按 Turtle 1.12 返回 `0`，`GetStateMap()` / `GetStateMapId()` / `GetStateInstanceId()` 按当前单 Lua 状态返回 `nil` / `-1` / `0`，`IsCompatibilityMode()` 返回 `true`。
 - 全局工具/管理函数补充：新增 `CreateLongLong`、`CreateULongLong`、`CreateInt64`、`CreateUint64`、`GetItemLink`、`GetAreaName`、`GetGuildByLeaderGUID`、`Kick`、`Ban`、`SaveAllPlayers`、`SendMail`、`AddVendorItem`、`VendorRemoveItem`、`VendorRemoveAllItems`。其中 `Ban()` 调用 Turtle 当前异步封禁流程，合法请求会先返回 `3` 表示已进入处理队列；`AddVendorItem` 的第 5 个参数在 Turtle 1.12 中按 `itemflags` 使用，不是 3.3.5 的 extended cost。
 - 全局游戏事件/地图/Gossip 函数补充：新增 `GetActiveGameEvents`、`IsGameEventActive`、`StartGameEvent`、`StopGameEvent`、`GetMapEntrance`、`GetGossipMenuOptionLocale`，均接入 Turtle 当前 `GameEventMgr` / `ObjectMgr` 真实接口。
@@ -78,9 +79,9 @@ E:\TurtleBY
 - 全局 DBC 查询函数补充：新增 `LookupEntry`，当前支持 `Spell` / `SpellEntry` 查询并返回 `SpellInfo` 对象；`GemProperties` 在 Turtle 1.12 中没有对应 DBC，作为兼容名称查询不到时返回空。
 - 全局 Group/Guild 事件补充：新增 `RegisterGroupEvent`、`RegisterGuildEvent`、`ClearGroupEvents`、`ClearGuildEvents`，并在 `Group.cpp` / `Guild.cpp` 接入真实触发点。
 - 全局玩家 Gossip 事件补充：新增 `RegisterPlayerGossipEvent`、`ClearPlayerGossipEvents`，并在客户端选择玩家自身 Gossip 菜单项时回调 Lua。
-- 全局唯一 Creature 事件补充：新增 `RegisterUniqueCreatureEvent`、`ClearUniqueCreatureEvents`，按 `ObjectGuid + instanceId + eventId` 绑定单个已经刷出的生物；它和 `RegisterCreatureEvent` 共用现有 Creature 事件触发点，同一事件会先执行 entry 绑定，再执行唯一生物绑定。当前沿用本兼容层现有事件注册语义，不返回取消函数，`shots` 参数暂未实现。
+- 全局唯一 Creature 事件补充：新增 `RegisterUniqueCreatureEvent`、`ClearUniqueCreatureEvents`，按 `ObjectGuid + instanceId + eventId` 绑定单个已经刷出的生物；它和 `RegisterCreatureEvent` 共用现有 Creature 事件触发点，同一事件会先执行 entry 绑定，再执行唯一生物绑定，支持 `shots` 和返回取消函数。
 - 全局 Map/Instance 副本事件补充：新增 `RegisterMapEvent`、`RegisterInstanceEvent`、`ClearMapEvents`、`ClearInstanceEvents`。`RegisterMapEvent(mapId, eventId, function)` 按地图 ID 绑定该地图所有副本实例；`RegisterInstanceEvent(instanceId, eventId, function)` 按运行时实例 ID 绑定单个实例。同一副本事件会先执行 mapId 绑定，再执行 instanceId 绑定。当前已触发事件 `1` 初始化、`2` 加载、`3` 更新、`4` 玩家进入、`5` Creature 创建、`6` GameObject 创建；事件 `7` 检查战斗进度还没有统一安全触发点，暂不触发。
-- 全局战场事件补充：新增 `RegisterBGEvent`、`ClearBattleGroundEvents`，并接入战场创建、开始、结束和销毁前事件；新增 `BattleGround` 对象封装，当前 `BattleGroundMethods.h` 参考方法差异为 `ref=17 target=19 missing=0`。当前沿用本兼容层现有事件注册语义，不返回取消函数，`shots` 参数暂未实现。
+- 全局战场事件补充：新增 `RegisterBGEvent`、`ClearBattleGroundEvents`，并接入战场创建、开始、结束和销毁前事件；新增 `BattleGround` 对象封装，当前 `BattleGroundMethods.h` 参考方法差异为 `ref=17 target=19 missing=0`，支持 `shots` 和返回取消函数。
 - 全局工单事件补充：新增 `RegisterTicketEvent`、`ClearTicketEvents`，并接入工单创建、玩家更新文本、关闭事件；新增 `Ticket` 对象封装，当前 `TicketMethods.h` 参考方法差异为 `ref=25 target=25 missing=0`。Turtle 1.12 没有独立的自动 resolve 核心流程，`4` 号 resolve 事件当前会在 Lua 调用 `ticket:SetResolvedBy()` 或 `ticket:SetCompleted()` 时触发。
 - 全局出租路径函数补充：新增 `AddTaxiPath(waypoints, mountA, mountH[, price[, pathId]])`，会在运行时创建临时 TaxiNode、TaxiPath 和 TaxiPathNode 数据，并返回可传给 `player:StartTaxi(pathId)` 的路径 ID。Lua 的 `Player:StartTaxi()` 当前按脚本入口跳过已知飞行点检查，以便自定义路径可直接使用。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
@@ -120,24 +121,24 @@ Eluna.ScriptPath = "lua_scripts"
 当前 Lua 中可用：
 
 ```lua
-RegisterPlayerEvent(eventId, function)
-RegisterServerEvent(eventId, function)
-RegisterGroupEvent(eventId, function)
-RegisterGuildEvent(eventId, function)
+RegisterPlayerEvent(eventId, function[, shots])
+RegisterServerEvent(eventId, function[, shots])
+RegisterGroupEvent(eventId, function[, shots])
+RegisterGuildEvent(eventId, function[, shots])
 RegisterBGEvent(eventId, function[, shots])
 RegisterTicketEvent(eventId, function[, shots])
 RegisterPacketEvent(opcode, eventId, function[, shots])
 RegisterMapEvent(mapId, eventId, function[, shots])
 RegisterInstanceEvent(instanceId, eventId, function[, shots])
-RegisterCreatureEvent(entry, eventId, function)
+RegisterCreatureEvent(entry, eventId, function[, shots])
 RegisterUniqueCreatureEvent(guidOrCreature, instanceId, eventId, function[, shots])
-RegisterGameObjectEvent(entry, eventId, function)
-RegisterItemEvent(entry, eventId, function)
-RegisterSpellEvent(spellId, eventId, function)
-RegisterCreatureGossipEvent(entry, eventId, function)
-RegisterGameObjectGossipEvent(entry, eventId, function)
-RegisterItemGossipEvent(entry, eventId, function)
-RegisterPlayerGossipEvent(playerGuidLow, eventId, function)
+RegisterGameObjectEvent(entry, eventId, function[, shots])
+RegisterItemEvent(entry, eventId, function[, shots])
+RegisterSpellEvent(spellId, eventId, function[, shots])
+RegisterCreatureGossipEvent(entry, eventId, function[, shots])
+RegisterGameObjectGossipEvent(entry, eventId, function[, shots])
+RegisterItemGossipEvent(entry, eventId, function[, shots])
+RegisterPlayerGossipEvent(playerGuidLow, eventId, function[, shots])
 ClearPlayerEvents([eventId])
 ClearServerEvents([eventId])
 ClearGroupEvents([eventId])
@@ -410,7 +411,7 @@ HIGHGUID_MO_TRANSPORT
 
 事件清理函数说明：
 
-- `RegisterPacketEvent` 的第 4 个 `shots` 参数目前先作为兼容参数接收但不扣次数；这点和本适配层现有其他 `Register*Event` 一样，后续可统一补成可取消/限次回调。
+- 所有 `Register*Event` 都会返回取消函数；保存后调用它可以只停用这一次注册。可选 `shots` 参数为触发次数，`0` 或不填表示不限制次数。
 - `ClearPlayerEvents()` 清理所有玩家事件；传入 `eventId` 时只清理指定玩家事件。
 - `ClearServerEvents()` 清理所有服务端事件；传入 `eventId` 时只清理指定服务端事件。
 - `ClearBattleGroundEvents()` 清理所有战场事件；传入 `eventId` 时只清理指定战场事件。
@@ -474,7 +475,7 @@ ClearBattleGroundEvents(1)
 ClearBattleGroundEvents()
 ```
 
-说明：`bgId` 是核心的战场类型 ID，`instanceId` 是运行时地图实例 ID。`winner` 使用核心队伍值；普通结束会传核心赢家，`EndNow()` 这类强制结束路径当前传 `TEAM_NONE`。`shots` 参数暂时只作为兼容参数接收，不会扣次数。
+说明：`bgId` 是核心的战场类型 ID，`instanceId` 是运行时地图实例 ID。`winner` 使用核心队伍值；普通结束会传核心赢家，`EndNow()` 这类强制结束路径当前传 `TEAM_NONE`。
 
 ### 工单事件
 
@@ -488,7 +489,7 @@ ClearTicketEvents(2)
 ClearTicketEvents()
 ```
 
-说明：Turtle 当前的工单系统没有独立的自动 `resolve` 核心路径；`4` 号事件会在 Lua 调用 `ticket:SetResolvedBy(guid)` 或 `ticket:SetCompleted()` 时触发。`shots` 参数暂时只作为兼容参数接收，不会扣次数。
+说明：Turtle 当前的工单系统没有独立的自动 `resolve` 核心路径；`4` 号事件会在 Lua 调用 `ticket:SetResolvedBy(guid)` 或 `ticket:SetCompleted()` 时触发。
 
 服务端包事件也已接入，作用于所有 opcode：
 
