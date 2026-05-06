@@ -13,6 +13,7 @@
 #include "Group.h"
 #include "Guild.h"
 #include "GuildMgr.h"
+#include "GMTicketMgr.h"
 #include "GameEventMgr.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
@@ -81,6 +82,7 @@ constexpr char const* GUILD_METATABLE = "Turtle.Guild";
 constexpr char const* MAP_METATABLE = "Turtle.Map";
 constexpr char const* INSTANCEDATA_METATABLE = "Turtle.InstanceData";
 constexpr char const* BATTLEGROUND_METATABLE = "Turtle.BattleGround";
+constexpr char const* TICKET_METATABLE = "Turtle.Ticket";
 constexpr char const* AURA_METATABLE = "Turtle.Aura";
 constexpr char const* SPELL_METATABLE = "Turtle.Spell";
 constexpr char const* SPELLINFO_METATABLE = "Turtle.SpellInfo";
@@ -199,6 +201,11 @@ struct LuaInstanceData
 struct LuaBattleGround
 {
     BattleGround* bg;
+};
+
+struct LuaTicket
+{
+    GmTicket* ticket;
 };
 
 struct LuaAura
@@ -448,6 +455,12 @@ BattleGround* CheckBattleGround(lua_State* state, int index)
     return holder ? holder->bg : nullptr;
 }
 
+GmTicket* CheckTicket(lua_State* state, int index)
+{
+    auto* holder = static_cast<LuaTicket*>(luaL_checkudata(state, index, TICKET_METATABLE));
+    return holder ? holder->ticket : nullptr;
+}
+
 Aura* CheckAura(lua_State* state, int index)
 {
     auto* holder = static_cast<LuaAura*>(luaL_checkudata(state, index, AURA_METATABLE));
@@ -617,6 +630,21 @@ void PushBattleGroundValue(lua_State* state, BattleGround* bg)
     holder->bg = bg;
 
     luaL_getmetatable(state, BATTLEGROUND_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void PushTicketValue(lua_State* state, GmTicket* ticket)
+{
+    if (!ticket)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    auto* holder = static_cast<LuaTicket*>(lua_newuserdata(state, sizeof(LuaTicket)));
+    holder->ticket = ticket;
+
+    luaL_getmetatable(state, TICKET_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -1106,6 +1134,20 @@ int LuaRegisterBGEvent(lua_State* state)
     return 0;
 }
 
+int LuaRegisterTicketEvent(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 1));
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    lua_pushvalue(state, 2);
+    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    engine->RegisterTicketEvent(eventId, functionRef);
+    return 0;
+}
+
 int LuaRegisterPacketEvent(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -1262,6 +1304,18 @@ int LuaClearBattleGroundEvents(lua_State* state)
     bool allEvents = lua_isnoneornil(state, 1);
     uint32 eventId = allEvents ? 0 : static_cast<uint32>(luaL_checkinteger(state, 1));
     engine->ClearBattleGroundEvents(eventId, allEvents);
+    return 0;
+}
+
+int LuaClearTicketEvents(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    bool allEvents = lua_isnoneornil(state, 1);
+    uint32 eventId = allEvents ? 0 : static_cast<uint32>(luaL_checkinteger(state, 1));
+    engine->ClearTicketEvents(eventId, allEvents);
     return 0;
 }
 
@@ -13253,6 +13307,252 @@ int BattleGroundIsArena(lua_State* state)
     return 1;
 }
 
+int TicketIsClosed(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushboolean(state, ticket && ticket->IsClosed());
+    return 1;
+}
+
+int TicketIsCompleted(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushboolean(state, ticket && ticket->IsCompleted());
+    return 1;
+}
+
+int TicketIsFromPlayer(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushboolean(state, ticket && ticket->IsFromPlayer(guid));
+    return 1;
+}
+
+int TicketIsAssigned(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushboolean(state, ticket && ticket->IsAssigned());
+    return 1;
+}
+
+int TicketIsAssignedTo(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushboolean(state, ticket && ticket->IsAssignedTo(guid));
+    return 1;
+}
+
+int TicketIsAssignedNotTo(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    lua_pushboolean(state, ticket && ticket->IsAssignedNotTo(guid));
+    return 1;
+}
+
+int TicketGetId(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushinteger(state, ticket ? ticket->GetId() : 0);
+    return 1;
+}
+
+int TicketGetPlayer(lua_State* state)
+{
+    TurtleLuaEngine* engine = GetEngine(state);
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (engine && ticket)
+        engine->PushPlayer(ticket->GetPlayer());
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int TicketGetPlayerName(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushstring(state, ticket ? ticket->GetPlayerName().c_str() : "");
+    return 1;
+}
+
+int TicketGetMessage(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushstring(state, ticket ? ticket->GetMessage().c_str() : "");
+    return 1;
+}
+
+int TicketGetAssignedPlayer(lua_State* state)
+{
+    TurtleLuaEngine* engine = GetEngine(state);
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (engine && ticket)
+        engine->PushPlayer(ticket->GetAssignedPlayer());
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int TicketGetAssignedToGUID(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    PushObjectGuidValue(state, ticket ? ticket->GetAssignedToGUID() : ObjectGuid());
+    return 1;
+}
+
+int TicketGetLastModifiedTime(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushinteger(state, ticket ? ticket->GetLastModifiedTime() : 0);
+    return 1;
+}
+
+int TicketGetResponse(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushstring(state, ticket ? ticket->GetResponse().c_str() : "");
+    return 1;
+}
+
+int TicketGetChatLog(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    lua_pushstring(state, ticket ? ticket->GetChatLog().c_str() : "");
+    return 1;
+}
+
+int TicketSetAssignedTo(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    bool isAdmin = lua_toboolean(state, 3) != 0;
+    if (ticket)
+    {
+        ticket->SetAssignedTo(guid, isAdmin);
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketSetResolvedBy(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    ObjectGuid guid = CheckObjectGuidValue(state, 2);
+    if (ticket)
+    {
+        if (!ticket->IsClosed())
+            sTicketMgr.CloseTicket(ticket->GetId(), guid);
+        else
+        {
+            ticket->SetClosedBy(guid);
+            ticket->SaveToDB();
+        }
+
+        if (TurtleLuaEngine* engine = GetEngine(state))
+            engine->OnTicketResolve(ticket);
+    }
+    return 0;
+}
+
+int TicketSetCompleted(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (ticket)
+    {
+        ticket->SetCompleted();
+        ticket->SaveToDB();
+        if (TurtleLuaEngine* engine = GetEngine(state))
+            engine->OnTicketResolve(ticket);
+    }
+    return 0;
+}
+
+int TicketSetMessage(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    char const* message = luaL_checkstring(state, 2);
+    if (ticket)
+    {
+        ticket->SetMessage(message);
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketSetComment(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    char const* comment = luaL_checkstring(state, 2);
+    if (ticket)
+    {
+        ticket->SetComment(comment);
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketSetViewed(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (ticket)
+    {
+        ticket->SetViewed();
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketSetUnassigned(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (ticket)
+    {
+        ticket->SetUnassigned();
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketSetPosition(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    uint32 mapId = static_cast<uint32>(luaL_checkinteger(state, 2));
+    float x = static_cast<float>(luaL_checknumber(state, 3));
+    float y = static_cast<float>(luaL_checknumber(state, 4));
+    float z = static_cast<float>(luaL_checknumber(state, 5));
+    if (ticket)
+    {
+        ticket->SetPosition(mapId, x, y, z);
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketAppendResponse(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    char const* response = luaL_checkstring(state, 2);
+    if (ticket)
+    {
+        ticket->AppendResponse(response);
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
+int TicketDeleteResponse(lua_State* state)
+{
+    GmTicket* ticket = CheckTicket(state, 1);
+    if (ticket)
+    {
+        ticket->ResetResponse();
+        ticket->SaveToDB();
+    }
+    return 0;
+}
+
 int AuraGetCaster(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -15758,6 +16058,7 @@ void TurtleLuaEngine::OpenState()
     RegisterMapMetatable();
     RegisterInstanceDataMetatable();
     RegisterBattleGroundMetatable();
+    RegisterTicketMetatable();
     RegisterAuraMetatable();
     RegisterSpellMetatable();
     RegisterSpellInfoMetatable();
@@ -15778,6 +16079,7 @@ void TurtleLuaEngine::CloseState()
     _serverEvents.clear();
     _playerEvents.clear();
     _battleGroundEvents.clear();
+    _ticketEvents.clear();
     _mapEvents.clear();
     _instanceEvents.clear();
     _creatureEvents.clear();
@@ -15806,6 +16108,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "RegisterGroupEvent", &LuaRegisterGroupEvent);
     lua_register(_state, "RegisterGuildEvent", &LuaRegisterGuildEvent);
     lua_register(_state, "RegisterBGEvent", &LuaRegisterBGEvent);
+    lua_register(_state, "RegisterTicketEvent", &LuaRegisterTicketEvent);
     lua_register(_state, "RegisterPacketEvent", &LuaRegisterPacketEvent);
     lua_register(_state, "RegisterMapEvent", &LuaRegisterMapEvent);
     lua_register(_state, "RegisterInstanceEvent", &LuaRegisterInstanceEvent);
@@ -15823,6 +16126,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "ClearGroupEvents", &LuaClearGroupEvents);
     lua_register(_state, "ClearGuildEvents", &LuaClearGuildEvents);
     lua_register(_state, "ClearBattleGroundEvents", &LuaClearBattleGroundEvents);
+    lua_register(_state, "ClearTicketEvents", &LuaClearTicketEvents);
     lua_register(_state, "ClearPacketEvents", &LuaClearPacketEvents);
     lua_register(_state, "ClearMapEvents", &LuaClearMapEvents);
     lua_register(_state, "ClearInstanceEvents", &LuaClearInstanceEvents);
@@ -17786,6 +18090,43 @@ void TurtleLuaEngine::RegisterBattleGroundMetatable()
     lua_pop(_state, 1);
 }
 
+void TurtleLuaEngine::RegisterTicketMetatable()
+{
+    luaL_newmetatable(_state, TICKET_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "IsClosed", &TicketIsClosed);
+    SetMethod(_state, "IsCompleted", &TicketIsCompleted);
+    SetMethod(_state, "IsFromPlayer", &TicketIsFromPlayer);
+    SetMethod(_state, "IsAssigned", &TicketIsAssigned);
+    SetMethod(_state, "IsAssignedTo", &TicketIsAssignedTo);
+    SetMethod(_state, "IsAssignedNotTo", &TicketIsAssignedNotTo);
+    SetMethod(_state, "GetId", &TicketGetId);
+    SetMethod(_state, "GetID", &TicketGetId);
+    SetMethod(_state, "GetPlayer", &TicketGetPlayer);
+    SetMethod(_state, "GetPlayerName", &TicketGetPlayerName);
+    SetMethod(_state, "GetMessage", &TicketGetMessage);
+    SetMethod(_state, "GetAssignedPlayer", &TicketGetAssignedPlayer);
+    SetMethod(_state, "GetAssignedToGUID", &TicketGetAssignedToGUID);
+    SetMethod(_state, "GetAssignedToGuid", &TicketGetAssignedToGUID);
+    SetMethod(_state, "GetLastModifiedTime", &TicketGetLastModifiedTime);
+    SetMethod(_state, "GetResponse", &TicketGetResponse);
+    SetMethod(_state, "GetChatLog", &TicketGetChatLog);
+    SetMethod(_state, "SetAssignedTo", &TicketSetAssignedTo);
+    SetMethod(_state, "SetResolvedBy", &TicketSetResolvedBy);
+    SetMethod(_state, "SetCompleted", &TicketSetCompleted);
+    SetMethod(_state, "SetMessage", &TicketSetMessage);
+    SetMethod(_state, "SetComment", &TicketSetComment);
+    SetMethod(_state, "SetViewed", &TicketSetViewed);
+    SetMethod(_state, "SetUnassigned", &TicketSetUnassigned);
+    SetMethod(_state, "SetPosition", &TicketSetPosition);
+    SetMethod(_state, "AppendResponse", &TicketAppendResponse);
+    SetMethod(_state, "DeleteResponse", &TicketDeleteResponse);
+    lua_setfield(_state, -2, "__index");
+
+    lua_pop(_state, 1);
+}
+
 void TurtleLuaEngine::RegisterAuraMetatable()
 {
     luaL_newmetatable(_state, AURA_METATABLE);
@@ -18354,6 +18695,11 @@ void TurtleLuaEngine::RegisterBattleGroundEvent(uint32 eventId, int functionRef)
     _battleGroundEvents[eventId].push_back(functionRef);
 }
 
+void TurtleLuaEngine::RegisterTicketEvent(uint32 eventId, int functionRef)
+{
+    _ticketEvents[eventId].push_back(functionRef);
+}
+
 void TurtleLuaEngine::RegisterMapEvent(uint32 mapId, uint32 eventId, int functionRef)
 {
     _mapEvents[mapId][eventId].push_back(functionRef);
@@ -18437,6 +18783,11 @@ void TurtleLuaEngine::ClearGuildEvents(uint32 eventId, bool allEvents)
 void TurtleLuaEngine::ClearBattleGroundEvents(uint32 eventId, bool allEvents)
 {
     ClearEventStore(_state, _battleGroundEvents, eventId, allEvents);
+}
+
+void TurtleLuaEngine::ClearTicketEvents(uint32 eventId, bool allEvents)
+{
+    ClearEventStore(_state, _ticketEvents, eventId, allEvents);
 }
 
 void TurtleLuaEngine::ClearMapEvents(uint32 mapId, uint32 eventId, bool allEvents)
@@ -18805,6 +19156,11 @@ void TurtleLuaEngine::PushBattleGround(BattleGround* bg)
     PushBattleGroundValue(_state, bg);
 }
 
+void TurtleLuaEngine::PushTicket(GmTicket* ticket)
+{
+    PushTicketValue(_state, ticket);
+}
+
 void TurtleLuaEngine::PushSpell(Spell* spell)
 {
     if (!spell)
@@ -19058,6 +19414,39 @@ void TurtleLuaEngine::CallBattleGroundEvent(uint32 eventId, BattleGround* /*bg*/
     lua_settop(_state, base);
 }
 
+void TurtleLuaEngine::CallTicketEvent(uint32 eventId, GmTicket* /*ticket*/, int argCount)
+{
+    int base = lua_gettop(_state) - argCount;
+    auto itr = _ticketEvents.find(eventId);
+    if (itr == _ticketEvents.end())
+    {
+        lua_settop(_state, base);
+        return;
+    }
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        for (int i = 1; i <= argCount; ++i)
+            lua_pushvalue(_state, base + i);
+
+        if (lua_pcall(_state, argCount, 0, 0) != LUA_OK)
+        {
+            LogError("ticket event");
+            lua_pop(_state, 1);
+        }
+    }
+
+    lua_settop(_state, base);
+}
+
 std::vector<int> TurtleLuaEngine::CollectInstanceEventRefs(Map* map, uint32 eventId)
 {
     std::vector<int> refs;
@@ -19288,6 +19677,55 @@ void TurtleLuaEngine::OnBattleGroundPreDestroy(BattleGround* bg)
     lua_pushinteger(_state, bg->GetTypeID());
     lua_pushinteger(_state, bg->GetInstanceID());
     CallBattleGroundEvent(BG_EVENT_ON_PRE_DESTROY, bg, 4);
+}
+
+void TurtleLuaEngine::OnTicketCreate(GmTicket* ticket)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !ticket)
+        return;
+
+    lua_pushinteger(_state, TICKET_EVENT_ON_CREATE);
+    PushTicket(ticket);
+    CallTicketEvent(TICKET_EVENT_ON_CREATE, ticket, 2);
+}
+
+void TurtleLuaEngine::OnTicketUpdateLastChange(GmTicket* ticket, std::string const& message)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !ticket)
+        return;
+
+    lua_pushinteger(_state, TICKET_EVENT_UPDATE_LAST_CHANGE);
+    PushTicket(ticket);
+    lua_pushstring(_state, message.c_str());
+    CallTicketEvent(TICKET_EVENT_UPDATE_LAST_CHANGE, ticket, 3);
+}
+
+void TurtleLuaEngine::OnTicketClose(GmTicket* ticket)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !ticket)
+        return;
+
+    lua_pushinteger(_state, TICKET_EVENT_ON_CLOSE);
+    PushTicket(ticket);
+    CallTicketEvent(TICKET_EVENT_ON_CLOSE, ticket, 2);
+}
+
+void TurtleLuaEngine::OnTicketResolve(GmTicket* ticket)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !ticket)
+        return;
+
+    lua_pushinteger(_state, TICKET_EVENT_ON_RESOLVE);
+    PushTicket(ticket);
+    CallTicketEvent(TICKET_EVENT_ON_RESOLVE, ticket, 2);
 }
 
 void TurtleLuaEngine::OnGroupCreate(Group* group, ObjectGuid const& leaderGuid, uint32 groupType)

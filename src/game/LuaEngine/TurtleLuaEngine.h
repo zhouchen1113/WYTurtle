@@ -24,6 +24,7 @@ class Guild;
 class Channel;
 class Map;
 class BattleGround;
+class GmTicket;
 class Spell;
 class Roll;
 class InstanceData;
@@ -148,6 +149,14 @@ enum TurtleLuaBattleGroundEvents
     BG_EVENT_ON_END = 2,
     BG_EVENT_ON_CREATE = 3,
     BG_EVENT_ON_PRE_DESTROY = 4,
+};
+
+enum TurtleLuaTicketEvents
+{
+    TICKET_EVENT_ON_CREATE = 1,
+    TICKET_EVENT_UPDATE_LAST_CHANGE = 2,
+    TICKET_EVENT_ON_CLOSE = 3,
+    TICKET_EVENT_ON_RESOLVE = 4,
 };
 
 enum TurtleLuaInstanceEvents
@@ -312,6 +321,10 @@ public:
     void OnBattleGroundStart(BattleGround* bg);
     void OnBattleGroundEnd(BattleGround* bg, uint32 winner);
     void OnBattleGroundPreDestroy(BattleGround* bg);
+    void OnTicketCreate(GmTicket* ticket);
+    void OnTicketUpdateLastChange(GmTicket* ticket, std::string const& message);
+    void OnTicketClose(GmTicket* ticket);
+    void OnTicketResolve(GmTicket* ticket);
     void OnCreatureEnterCombat(Creature* creature, Unit* target);
     void OnCreatureLeaveCombat(Creature* creature);
     void OnCreatureTargetDied(Creature* creature, Unit* victim);
@@ -340,6 +353,7 @@ public:
     void RegisterGroupEvent(uint32 eventId, int functionRef);
     void RegisterGuildEvent(uint32 eventId, int functionRef);
     void RegisterBattleGroundEvent(uint32 eventId, int functionRef);
+    void RegisterTicketEvent(uint32 eventId, int functionRef);
     void RegisterMapEvent(uint32 mapId, uint32 eventId, int functionRef);
     void RegisterInstanceEvent(uint32 instanceId, uint32 eventId, int functionRef);
     void RegisterCreatureEvent(uint32 entry, uint32 eventId, int functionRef);
@@ -357,6 +371,7 @@ public:
     void ClearGroupEvents(uint32 eventId, bool allEvents);
     void ClearGuildEvents(uint32 eventId, bool allEvents);
     void ClearBattleGroundEvents(uint32 eventId, bool allEvents);
+    void ClearTicketEvents(uint32 eventId, bool allEvents);
     void ClearMapEvents(uint32 mapId, uint32 eventId, bool allEvents);
     void ClearInstanceEvents(uint32 instanceId, uint32 eventId, bool allEvents);
     void ClearCreatureEvents(uint32 entry, uint32 eventId, bool allEvents);
@@ -422,6 +437,7 @@ public:
     void PushGuild(Guild* guild);
     void PushMap(Map* map);
     void PushBattleGround(BattleGround* bg);
+    void PushTicket(GmTicket* ticket);
     void PushSpell(Spell* spell);
     void PushObjectGuid(ObjectGuid const& guid);
 
@@ -484,6 +500,7 @@ private:
     void RegisterMapMetatable();
     void RegisterInstanceDataMetatable();
     void RegisterBattleGroundMetatable();
+    void RegisterTicketMetatable();
     void RegisterAuraMetatable();
     void RegisterSpellMetatable();
     void RegisterSpellInfoMetatable();
@@ -509,6 +526,7 @@ private:
     void CallServerEvent(uint32 eventId, uint32 arg);
     void CallServerMapEvent(uint32 eventId, Map* map, Player* player, uint32 diff);
     void CallBattleGroundEvent(uint32 eventId, BattleGround* bg, int argCount);
+    void CallTicketEvent(uint32 eventId, GmTicket* ticket, int argCount);
     std::vector<int> CollectInstanceEventRefs(Map* map, uint32 eventId);
     bool CallInstanceEvent(Map* map, uint32 eventId, int argCount);
     std::vector<int> CollectCreatureEventRefs(Creature* creature, uint32 eventId);
@@ -529,6 +547,7 @@ private:
     std::map<uint32, std::vector<int>> _groupEvents;
     std::map<uint32, std::vector<int>> _guildEvents;
     std::map<uint32, std::vector<int>> _battleGroundEvents;
+    std::map<uint32, std::vector<int>> _ticketEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _mapEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _instanceEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _creatureEvents;

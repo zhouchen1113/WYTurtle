@@ -34,6 +34,19 @@ end)
 --     print("BG pre-destroy: " .. bg:GetName() .. " instance=" .. instanceId)
 -- end)
 
+-- 工单事件示例。只有玩家创建/更新/关闭工单时才会触发。
+-- RegisterTicketEvent(1, function(event, ticket)
+--     print("Ticket created: #" .. ticket:GetId() .. " player=" .. ticket:GetPlayerName())
+-- end)
+--
+-- RegisterTicketEvent(2, function(event, ticket, message)
+--     print("Ticket updated: #" .. ticket:GetId() .. " message=" .. message)
+-- end)
+--
+-- RegisterTicketEvent(3, function(event, ticket)
+--     print("Ticket closed: #" .. ticket:GetId() .. " closed=" .. tostring(ticket:IsClosed()))
+-- end)
+
 CreateLuaEvent(function(eventId)
     print("Lua timed event " .. eventId .. " is alive")
 end, 60000, 0)
