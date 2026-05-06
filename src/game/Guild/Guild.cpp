@@ -1352,6 +1352,9 @@ void Guild::LogGuildEvent(uint8 EventType, ObjectGuid playerGuid1, ObjectGuid pl
     NewEvent.PlayerGuid2 = playerGuid2.GetCounter();
     NewEvent.NewRank = newRank;
     NewEvent.TimeStamp = uint32(time(nullptr));
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnGuildEvent(this, EventType, NewEvent.PlayerGuid1, NewEvent.PlayerGuid2, newRank);
+#endif
     // Count new LogGuid
     m_GuildEventLogNextGuid = (m_GuildEventLogNextGuid + 1) % sWorld.getConfig(CONFIG_UINT32_GUILD_EVENT_LOG_COUNT);
     // Check max records limit

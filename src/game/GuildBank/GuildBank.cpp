@@ -33,6 +33,9 @@
 #include "Policies/SingletonImp.h"
 #include "Player.h"
 #include "Chat.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 /*
 * Guild Bank Design
@@ -767,6 +770,12 @@ void GuildBank::DepositMoney(std::string msg)
 		return;
 	}
 
+#ifdef USE_LUA
+	sTurtleLuaEngine.OnGuildMoneyDeposit(_guild, _player, money);
+	if (money == 0)
+		return;
+#endif
+
 	if (_player->GetMoney() < money)
 	{
 		_player->SendBuyError(BUY_ERR_NOT_ENOUGHT_MONEY, 0, 0, 0);
@@ -809,6 +818,12 @@ void GuildBank::WithdrawMoney(std::string msg)
 		_player->SendAddonMessage(prefix, "WithdrawMoney:Error:NoAccess");
 		return;
 	}
+
+#ifdef USE_LUA
+	sTurtleLuaEngine.OnGuildMoneyWithdraw(_guild, _player, money, false);
+	if (money == 0)
+		return;
+#endif
 
 	if (money > b_money)
 	{
@@ -1179,6 +1194,10 @@ void GuildBank::DepositItemInSlot(uint32 bankTab, uint32 bankSlot, Item* pItem, 
 {
 	BankItem* bItem;
 
+#ifdef USE_LUA
+	sTurtleLuaEngine.OnGuildItemMove(_guild, _player, pItem, false, pItem->GetBagSlot(), pItem->GetSlot(), true, static_cast<uint8>(bankTab), static_cast<uint8>(bankSlot));
+#endif
+
 	// form a new bItem 
 	if (state == ITEM_NEW)
 	{
@@ -1444,6 +1463,10 @@ void GuildBank::WithdrawItem(uint32 bankTab, uint32 bankSlot, uint32 count, uint
 		pItem->SetCount(pItem->GetCount() + count);
 		pItem->SendCreateUpdateToPlayer(_player);
 		pItem->SetState(ITEM_CHANGED, _player);
+
+#ifdef USE_LUA
+		sTurtleLuaEngine.OnGuildItemMove(_guild, _player, pItem, true, static_cast<uint8>(bankTab), static_cast<uint8>(bankSlot), false, static_cast<uint8>(playerBag), static_cast<uint8>(playerSlot));
+#endif
 		
 		LogAction(ACTION_WITHDRAW_ITEM, bItem->tab, bItem->item_template, count, bItem);
 
@@ -1463,6 +1486,10 @@ void GuildBank::WithdrawItem(uint32 bankTab, uint32 bankSlot, uint32 count, uint
 		if (item)
 		{
 			CloneItem(item, bItem);
+
+#ifdef USE_LUA
+			sTurtleLuaEngine.OnGuildItemMove(_guild, _player, item, true, static_cast<uint8>(bankTab), static_cast<uint8>(bankSlot), false, item->GetBagSlot(), item->GetSlot());
+#endif
 
 			if (remainer == 0)
 			{
@@ -1590,6 +1617,10 @@ void GuildBank::MoveItem(BankItem* sItem, BankItem* dItem, uint8 bankTab, uint8 
 		_player->SendAddonMessage(prefix, "MoveItem:Error:CantGetSource");
 		return;
 	}
+
+#ifdef USE_LUA
+	sTurtleLuaEngine.OnGuildItemMove(_guild, _player, nullptr, true, bankTab, fromSlot, true, bankTab, toSlot);
+#endif
 
 	bool swapItems = false;
 
@@ -1822,6 +1853,10 @@ void GuildBank::SplitItem(std::string msg)
 			return;
 		}
 
+#ifdef USE_LUA
+		sTurtleLuaEngine.OnGuildItemMove(_guild, _player, nullptr, true, bankTab, fromSlot, true, bankTab, toSlot);
+#endif
+
 		sItem->count = sourceNewCount;
 		sItem->state = ITEM_CHANGED;
 		b_itemUpdateQueue.push_back(*sItem);
@@ -1899,6 +1934,10 @@ void GuildBank::SplitItem(std::string msg)
 					_player->SendAddonMessage(prefix, "SplitItem:Error:BadDestCount");
 					return;
 				}
+
+#ifdef USE_LUA
+				sTurtleLuaEngine.OnGuildItemMove(_guild, _player, nullptr, true, bankTab, fromSlot, true, bankTab, toSlot);
+#endif
 
 				sItem->count = sourceNewCount;
 				sItem->state = ITEM_CHANGED;
@@ -2353,6 +2392,12 @@ void GuildBank::LogAction(uint8 action, uint32 tab, uint32 itemID, uint32 count,
 
 		b_log_changed = true;
 	}
+
+#ifdef USE_LUA
+	uint32 itemOrMoney = tab == TAB_MONEY ? count : itemID;
+	uint16 itemStackCount = tab == TAB_MONEY ? 0 : static_cast<uint16>(count > 0xFFFF ? 0xFFFF : count);
+	sTurtleLuaEngine.OnGuildBankEvent(_guild, action, static_cast<uint8>(tab), playerGuid, itemOrMoney, itemStackCount, 0);
+#endif
 }
 
 

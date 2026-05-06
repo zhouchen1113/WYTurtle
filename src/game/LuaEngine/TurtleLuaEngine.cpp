@@ -22041,6 +22041,214 @@ void TurtleLuaEngine::OnGuildDisband(Guild* guild)
     }
 }
 
+void TurtleLuaEngine::OnGuildMoneyWithdraw(Guild* guild, Player* player, uint32& amount, bool isRepair)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+    if (!IsEnabled() || !guild)
+        return;
+
+    auto itr = _guildEvents.find(GUILD_EVENT_ON_MONEY_WITHDRAW);
+    if (itr == _guildEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        int before = lua_gettop(_state);
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_settop(_state, before);
+            continue;
+        }
+
+        lua_pushinteger(_state, GUILD_EVENT_ON_MONEY_WITHDRAW);
+        PushGuild(guild);
+        PushPlayer(player);
+        lua_pushinteger(_state, amount);
+        lua_pushboolean(_state, isRepair);
+
+        if (lua_pcall(_state, 5, LUA_MULTRET, 0) != LUA_OK)
+        {
+            LogError("guild money withdraw event");
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        int results = lua_gettop(_state) - before;
+        if (results >= 1)
+        {
+            int first = before + 1;
+            if (lua_isnumber(_state, first))
+            {
+                lua_Integer newAmount = lua_tointeger(_state, first);
+                amount = newAmount > 0 ? static_cast<uint32>(newAmount) : 0;
+            }
+        }
+
+        lua_settop(_state, before);
+    }
+}
+
+void TurtleLuaEngine::OnGuildMoneyDeposit(Guild* guild, Player* player, uint32& amount)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+    if (!IsEnabled() || !guild)
+        return;
+
+    auto itr = _guildEvents.find(GUILD_EVENT_ON_MONEY_DEPOSIT);
+    if (itr == _guildEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        int before = lua_gettop(_state);
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_settop(_state, before);
+            continue;
+        }
+
+        lua_pushinteger(_state, GUILD_EVENT_ON_MONEY_DEPOSIT);
+        PushGuild(guild);
+        PushPlayer(player);
+        lua_pushinteger(_state, amount);
+
+        if (lua_pcall(_state, 4, LUA_MULTRET, 0) != LUA_OK)
+        {
+            LogError("guild money deposit event");
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        int results = lua_gettop(_state) - before;
+        if (results >= 1)
+        {
+            int first = before + 1;
+            if (lua_isnumber(_state, first))
+            {
+                lua_Integer newAmount = lua_tointeger(_state, first);
+                amount = newAmount > 0 ? static_cast<uint32>(newAmount) : 0;
+            }
+        }
+
+        lua_settop(_state, before);
+    }
+}
+
+void TurtleLuaEngine::OnGuildItemMove(Guild* guild, Player* player, Item* item, bool isSrcBank, uint8 srcContainer, uint8 srcSlotId, bool isDestBank, uint8 destContainer, uint8 destSlotId)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+    if (!IsEnabled() || !guild)
+        return;
+
+    auto itr = _guildEvents.find(GUILD_EVENT_ON_ITEM_MOVE);
+    if (itr == _guildEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, GUILD_EVENT_ON_ITEM_MOVE);
+        PushGuild(guild);
+        PushPlayer(player);
+        PushItem(item);
+        lua_pushboolean(_state, isSrcBank);
+        lua_pushinteger(_state, srcContainer);
+        lua_pushinteger(_state, srcSlotId);
+        lua_pushboolean(_state, isDestBank);
+        lua_pushinteger(_state, destContainer);
+        lua_pushinteger(_state, destSlotId);
+
+        if (lua_pcall(_state, 10, 0, 0) != LUA_OK)
+        {
+            LogError("guild item move event");
+            lua_pop(_state, 1);
+        }
+    }
+}
+
+void TurtleLuaEngine::OnGuildEvent(Guild* guild, uint8 eventType, uint32 playerGuid1, uint32 playerGuid2, uint8 newRank)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+    if (!IsEnabled() || !guild)
+        return;
+
+    auto itr = _guildEvents.find(GUILD_EVENT_ON_EVENT);
+    if (itr == _guildEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, GUILD_EVENT_ON_EVENT);
+        PushGuild(guild);
+        lua_pushinteger(_state, eventType);
+        lua_pushinteger(_state, playerGuid1);
+        lua_pushinteger(_state, playerGuid2);
+        lua_pushinteger(_state, newRank);
+
+        if (lua_pcall(_state, 6, 0, 0) != LUA_OK)
+        {
+            LogError("guild log event");
+            lua_pop(_state, 1);
+        }
+    }
+}
+
+void TurtleLuaEngine::OnGuildBankEvent(Guild* guild, uint8 eventType, uint8 tabId, uint32 playerGuid, uint32 itemOrMoney, uint16 itemStackCount, uint8 destTabId)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+    if (!IsEnabled() || !guild)
+        return;
+
+    auto itr = _guildEvents.find(GUILD_EVENT_ON_BANK_EVENT);
+    if (itr == _guildEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, GUILD_EVENT_ON_BANK_EVENT);
+        PushGuild(guild);
+        lua_pushinteger(_state, eventType);
+        lua_pushinteger(_state, tabId);
+        lua_pushinteger(_state, playerGuid);
+        lua_pushinteger(_state, itemOrMoney);
+        lua_pushinteger(_state, itemStackCount);
+        lua_pushinteger(_state, destTabId);
+
+        if (lua_pcall(_state, 8, 0, 0) != LUA_OK)
+        {
+            LogError("guild bank event");
+            lua_pop(_state, 1);
+        }
+    }
+}
+
 void TurtleLuaEngine::UpdateTimedEvents(uint32 diff)
 {
     if (_timedEvents.empty())

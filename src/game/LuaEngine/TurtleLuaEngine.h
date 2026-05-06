@@ -139,6 +139,11 @@ enum TurtleLuaGuildEvents
     GUILD_EVENT_ON_INFO_CHANGE = 4,
     GUILD_EVENT_ON_CREATE = 5,
     GUILD_EVENT_ON_DISBAND = 6,
+    GUILD_EVENT_ON_MONEY_WITHDRAW = 7,
+    GUILD_EVENT_ON_MONEY_DEPOSIT = 8,
+    GUILD_EVENT_ON_ITEM_MOVE = 9,
+    GUILD_EVENT_ON_EVENT = 10,
+    GUILD_EVENT_ON_BANK_EVENT = 11,
 };
 
 enum TurtleLuaGroupEvents
@@ -424,6 +429,11 @@ public:
     void OnGuildMOTDChange(Guild* guild, std::string const& motd);
     void OnGuildInfoChange(Guild* guild, std::string const& info);
     void OnGuildDisband(Guild* guild);
+    void OnGuildMoneyWithdraw(Guild* guild, Player* player, uint32& amount, bool isRepair);
+    void OnGuildMoneyDeposit(Guild* guild, Player* player, uint32& amount);
+    void OnGuildItemMove(Guild* guild, Player* player, Item* item, bool isSrcBank, uint8 srcContainer, uint8 srcSlotId, bool isDestBank, uint8 destContainer, uint8 destSlotId);
+    void OnGuildEvent(Guild* guild, uint8 eventType, uint32 playerGuid1, uint32 playerGuid2, uint8 newRank);
+    void OnGuildBankEvent(Guild* guild, uint8 eventType, uint8 tabId, uint32 playerGuid, uint32 itemOrMoney, uint16 itemStackCount, uint8 destTabId);
     bool OnGameObjectUse(Player* player, GameObject* go);
     void OnGameObjectLootStateChanged(GameObject* go, uint32 state);
     void OnGameObjectGoStateChanged(GameObject* go, uint32 state);
