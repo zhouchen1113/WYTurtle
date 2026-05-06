@@ -603,6 +603,12 @@ class Creature : public Unit
         void SetCorpseDelay(uint32 delay) { m_corpseDelay = delay; }
         bool IsReputationRewardDisabled() const { return m_reputationRewardDisabled; }
         void SetReputationRewardDisabled(bool disabled) { m_reputationRewardDisabled = disabled; }
+        uint16 GetLuaLootMode() const { return m_luaLootMode; }
+        bool HasLuaLootMode(uint16 lootMode) const { return (m_luaLootMode & lootMode) != 0; }
+        void SetLuaLootMode(uint16 lootMode) { m_luaLootMode = lootMode; }
+        void AddLuaLootMode(uint16 lootMode) { m_luaLootMode |= lootMode; }
+        void RemoveLuaLootMode(uint16 lootMode) { m_luaLootMode &= ~lootMode; }
+        void ResetLuaLootMode() { m_luaLootMode = 1; }
         bool IsRacialLeader() const { return GetCreatureInfo()->racial_leader; }
         bool IsCivilian() const { return GetCreatureInfo()->civilian; }
         bool IsTrigger() const { return HasExtraFlag(CREATURE_FLAG_EXTRA_INVISIBLE); }
@@ -1091,6 +1097,7 @@ class Creature : public Unit
         uint32 m_respawnDelay;                              // (secs) delay between corpse disappearance and respawning
         uint32 m_corpseDelay;                               // (secs) delay between death and corpse disappearance
         bool m_reputationRewardDisabled;
+        uint16 m_luaLootMode;
         float m_wanderDistance;
 
         time_t m_combatStartTime;

@@ -10364,17 +10364,52 @@ int CreatureIsDamageEnoughForLootingAndReward(lua_State* state)
 
 int CreatureGetLootMode(lua_State* state)
 {
-    (void)CheckCreature(state, 1);
-    lua_pushinteger(state, 1);
+    Creature* creature = CheckCreature(state, 1);
+    lua_pushinteger(state, creature ? creature->GetLuaLootMode() : 1);
     return 1;
 }
 
 int CreatureHasLootMode(lua_State* state)
 {
-    (void)CheckCreature(state, 1);
-    uint32 lootMode = static_cast<uint32>(luaL_checkinteger(state, 2));
-    lua_pushboolean(state, (lootMode & 1) != 0);
+    Creature* creature = CheckCreature(state, 1);
+    uint16 lootMode = static_cast<uint16>(luaL_checkinteger(state, 2));
+    lua_pushboolean(state, creature && creature->HasLuaLootMode(lootMode));
     return 1;
+}
+
+int CreatureSetLootMode(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    uint16 lootMode = static_cast<uint16>(luaL_checkinteger(state, 2));
+    if (creature)
+        creature->SetLuaLootMode(lootMode);
+    return 0;
+}
+
+int CreatureAddLootMode(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    uint16 lootMode = static_cast<uint16>(luaL_checkinteger(state, 2));
+    if (creature)
+        creature->AddLuaLootMode(lootMode);
+    return 0;
+}
+
+int CreatureRemoveLootMode(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    uint16 lootMode = static_cast<uint16>(luaL_checkinteger(state, 2));
+    if (creature)
+        creature->RemoveLuaLootMode(lootMode);
+    return 0;
+}
+
+int CreatureResetLootMode(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    if (creature)
+        creature->ResetLuaLootMode();
+    return 0;
 }
 
 int WorldObjectSummonCreature(lua_State* state)
@@ -17851,7 +17886,7 @@ void TurtleLuaEngine::RegisterCreatureMetatable()
     SetMethod(_state, "SetUnitFlagsTwo", &CreatureCompatNoop);
     SetMethod(_state, "SetReactState", &CreatureSetReactState);
     SetMethod(_state, "SetDisableGravity", &CreatureSetDisableGravity);
-    SetMethod(_state, "SetLootMode", &CreatureCompatNoop);
+    SetMethod(_state, "SetLootMode", &CreatureSetLootMode);
     SetMethod(_state, "SetDeathState", &CreatureSetDeathState);
     SetMethod(_state, "SetWalk", &CreatureSetWalk);
     SetMethod(_state, "SetEquipmentSlots", &CreatureSetEquipmentSlots);
@@ -17873,9 +17908,9 @@ void TurtleLuaEngine::RegisterCreatureMetatable()
     SetMethod(_state, "SaveToDB", &CreatureSaveToDB);
     SetMethod(_state, "SelectVictim", &CreatureSelectVictim);
     SetMethod(_state, "UpdateEntry", &CreatureUpdateEntry);
-    SetMethod(_state, "ResetLootMode", &CreatureCompatNoop);
-    SetMethod(_state, "RemoveLootMode", &CreatureCompatNoop);
-    SetMethod(_state, "AddLootMode", &CreatureCompatNoop);
+    SetMethod(_state, "ResetLootMode", &CreatureResetLootMode);
+    SetMethod(_state, "RemoveLootMode", &CreatureRemoveLootMode);
+    SetMethod(_state, "AddLootMode", &CreatureAddLootMode);
     SetMethod(_state, "GetCreatureFamily", &CreatureGetCreatureFamily);
     SetMethod(_state, "SetInCombatWithZone", &CreatureSetInCombatWithZone);
     SetMethod(_state, "SummonCreature", &WorldObjectSummonCreature);
