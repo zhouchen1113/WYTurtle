@@ -68,6 +68,7 @@ E:\TurtleBY
 - AddOn 消息事件：`RegisterServerEvent(30, function(event, sender, type, prefix, msg, target) end)` 已接入客户端插件消息，能在 Turtle 内置插件消息处理前拦截；`target` 可以是接收玩家、公会、队伍、频道 ID 或 `nil`。
 - Channel 基础对象封装：玩家频道聊天事件 `22` 现在按 3.3.5 Eluna 风格继续传频道数字 ID，并额外追加 `Channel` 对象；对象可读取频道名、频道 ID、人数、flags、安全等级、阵营、密码和成员状态，也能设置公告/密码/安全等级、设置成员主持/禁言、广播包或发送频道消息。
 - DynamicObject 基础对象封装：地图按 GUID 反查和通用 `WorldObject` 返回路径现在可以返回 `DynamicObject` 对象；脚本可读取施法者、施法者 GUID、法术 ID、效果索引、持续时间、半径和动态对象类型，也可调用 `Delay()` / `Delete()`。
+- ElunaQuery 数据库结果对象：`WorldDBQuery` / `CharDBQuery` / `AuthDBQuery` 等现在返回 `ElunaQuery` 对象，支持 3.3.5 Eluna 风格的 `GetUInt32(0)`、`GetString(0)`、`NextRow()`、`GetRow()` 等对象方法；列下标按 Eluna 从 `0` 开始。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -194,8 +195,50 @@ print(...)
 - `GetItemTemplate(itemId)` / `GetItemPrototype(itemId)` 返回只读物品模板对象，找不到时返回 `nil`。
 - `GetCreatureTemplate(entry)` / `GetCreatureInfo(entry)` 返回只读生物模板对象，找不到时返回 `nil`。
 - `GetGameObjectTemplate(entry)` / `GetGameObjectInfo(entry)` / `GetGOTemplate(entry)` / `GetGOInfo(entry)` 返回只读 GameObject 模板对象，找不到时返回 `nil`。
-- 数据库查询函数返回二维 Lua table，行和列都从 `1` 开始。
+- 数据库查询函数返回 `ElunaQuery` 对象，找不到结果时返回 `nil`；对象方法里的列下标按 3.3.5 Eluna 习惯从 `0` 开始。
 - 数据库执行函数返回 `true` 或 `false`。
+
+## ElunaQuery 方法
+
+`WorldDBQuery(sql)`、`CharDBQuery(sql)` / `CharacterDBQuery(sql)`、`AuthDBQuery(sql)` / `LoginDBQuery(sql)` 返回数据库查询结果对象；没有结果时返回 `nil`。
+
+```lua
+local query = WorldDBQuery("SELECT entry, name FROM creature_template LIMIT 1")
+if query then
+    print(query:GetUInt32(0), query:GetString(1))
+end
+```
+
+可用方法：
+
+```lua
+query:IsNull(column)
+query:IsNULL(column)
+query:GetColumnCount()
+query:GetFieldCount()
+query:GetRowCount()
+query:GetBool(column)
+query:GetUInt8(column)
+query:GetUInt16(column)
+query:GetUInt32(column)
+query:GetUInt64(column)
+query:GetInt8(column)
+query:GetInt16(column)
+query:GetInt32(column)
+query:GetInt64(column)
+query:GetFloat(column)
+query:GetDouble(column)
+query:GetString(column)
+query:NextRow()
+query:GetRow()
+```
+
+说明：
+
+- `column` 从 `0` 开始，这一点和旧 Eluna 保持一致。
+- `NextRow()` 会移动到下一行；查询刚返回时已经位于第一行，不要在读取第一行前先调用 `NextRow()`。
+- `GetRow()` 返回当前行 table，同时支持 `row[1]` 这种 Lua 数组访问和 `row["字段名"]` 这种字段名访问。
+- `GetUInt64()` / `GetInt64()` 在 Lua 里以整数返回；如果脚本需要完全避免大整数精度差异，可以用 `GetString(column)` 自己处理。
 
 可用的 `HighGuid` 常量：
 

@@ -40,6 +40,7 @@
 #include "WorldSession.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <list>
@@ -78,6 +79,7 @@ constexpr char const* SPELL_METATABLE = "Turtle.Spell";
 constexpr char const* SPELLINFO_METATABLE = "Turtle.SpellInfo";
 constexpr char const* SPELLTARGETS_METATABLE = "Turtle.SpellCastTargets";
 constexpr char const* WORLDPACKET_METATABLE = "Turtle.WorldPacket";
+constexpr char const* ELUNAQUERY_METATABLE = "Turtle.ElunaQuery";
 constexpr char const* OBJECTGUID_METATABLE = "Turtle.ObjectGuid";
 constexpr char const* CHATHANDLER_METATABLE = "Turtle.ChatHandler";
 constexpr char const* CHANNEL_METATABLE = "Turtle.Channel";
@@ -211,6 +213,12 @@ struct LuaWorldPacket
 {
     WorldPacket* packet;
     bool owned;
+};
+
+struct LuaQuery
+{
+    QueryNamedResult* result;
+    bool hasRow;
 };
 
 struct LuaObjectGuid
@@ -458,6 +466,11 @@ WorldPacket* RequireWorldPacket(lua_State* state, int index)
     if (!packet)
         luaL_error(state, "valid WorldPacket expected");
     return packet;
+}
+
+LuaQuery* CheckQuery(lua_State* state, int index)
+{
+    return static_cast<LuaQuery*>(luaL_checkudata(state, index, ELUNAQUERY_METATABLE));
 }
 
 ObjectGuid const* CheckObjectGuid(lua_State* state, int index)
@@ -1252,52 +1265,244 @@ void PushField(lua_State* state, Field const& field)
     }
 }
 
-int PushQueryResult(lua_State* state, QueryResult* rawResult)
+int PushQueryResult(lua_State* state, QueryNamedResult* rawResult)
 {
-    std::unique_ptr<QueryResult> result(rawResult);
+    std::unique_ptr<QueryNamedResult> result(rawResult);
     if (!result)
     {
         lua_pushnil(state);
         return 1;
     }
 
-    lua_newtable(state);
-    uint32 rowIndex = 1;
+    auto* holder = static_cast<LuaQuery*>(lua_newuserdata(state, sizeof(LuaQuery)));
+    holder->result = result.release();
+    holder->hasRow = holder->result && holder->result->Fetch();
+
+    luaL_getmetatable(state, ELUNAQUERY_METATABLE);
+    lua_setmetatable(state, -2);
+    return 1;
+}
+
+QueryNamedResult* RequireQueryResult(lua_State* state, int index, LuaQuery** outHolder = nullptr)
+{
+    LuaQuery* holder = CheckQuery(state, index);
+    if (outHolder)
+        *outHolder = holder;
+
+    if (!holder || !holder->result)
+        luaL_error(state, "valid ElunaQuery expected");
+
+    return holder->result;
+}
+
+Field const* QueryGetField(lua_State* state, int columnIndex)
+{
+    LuaQuery* holder = nullptr;
+    QueryNamedResult* result = RequireQueryResult(state, 1, &holder);
+    if (!holder->hasRow)
+        luaL_error(state, "ElunaQuery has no current row");
+
+    lua_Integer rawColumn = luaL_checkinteger(state, columnIndex);
+    if (rawColumn < 0)
+        luaL_argerror(state, columnIndex, "column index must be >= 0");
+
+    uint32 column = static_cast<uint32>(rawColumn);
     uint32 fieldCount = result->GetFieldCount();
+    if (column >= fieldCount)
+        luaL_argerror(state, columnIndex, "column index out of range");
 
-    do
+    Field* fields = result->Fetch();
+    if (!fields)
+        luaL_error(state, "ElunaQuery has no current row");
+
+    return &fields[column];
+}
+
+char const* FieldStringOrEmpty(Field const& field)
+{
+    return field.IsNULL() || !field.GetString() ? "" : field.GetString();
+}
+
+int QueryIsNull(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushboolean(state, field->IsNULL());
+    return 1;
+}
+
+int QueryGetColumnCount(lua_State* state)
+{
+    QueryNamedResult* result = RequireQueryResult(state, 1);
+    lua_pushinteger(state, result->GetFieldCount());
+    return 1;
+}
+
+int QueryGetRowCount(lua_State* state)
+{
+    QueryNamedResult* result = RequireQueryResult(state, 1);
+    uint64 rows = result->GetRowCount();
+    lua_pushinteger(state, rows > 0xFFFFFFFFULL ? -1 : static_cast<lua_Integer>(rows));
+    return 1;
+}
+
+int QueryGetBool(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushboolean(state, !field->IsNULL() && field->GetBool());
+    return 1;
+}
+
+int QueryGetUInt8(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : field->GetUInt8());
+    return 1;
+}
+
+int QueryGetUInt16(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : field->GetUInt16());
+    return 1;
+}
+
+int QueryGetUInt32(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : field->GetUInt32());
+    return 1;
+}
+
+int QueryGetUInt64(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : static_cast<lua_Integer>(field->GetUInt64()));
+    return 1;
+}
+
+int QueryGetInt8(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : static_cast<int8>(field->GetInt32()));
+    return 1;
+}
+
+int QueryGetInt16(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : field->GetInt16());
+    return 1;
+}
+
+int QueryGetInt32(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : field->GetInt32());
+    return 1;
+}
+
+int QueryGetInt64(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushinteger(state, field->IsNULL() ? 0 : static_cast<lua_Integer>(std::strtoll(FieldStringOrEmpty(*field), nullptr, 10)));
+    return 1;
+}
+
+int QueryGetFloat(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushnumber(state, field->IsNULL() ? 0.0f : field->GetFloat());
+    return 1;
+}
+
+int QueryGetDouble(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    lua_pushnumber(state, field->IsNULL() ? 0.0 : std::strtod(FieldStringOrEmpty(*field), nullptr));
+    return 1;
+}
+
+int QueryGetString(lua_State* state)
+{
+    Field const* field = QueryGetField(state, 2);
+    if (field->IsNULL())
+        lua_pushnil(state);
+    else
+        lua_pushstring(state, field->GetString());
+    return 1;
+}
+
+int QueryNextRow(lua_State* state)
+{
+    LuaQuery* holder = nullptr;
+    QueryNamedResult* result = RequireQueryResult(state, 1, &holder);
+    holder->hasRow = result->NextRow();
+    lua_pushboolean(state, holder->hasRow);
+    return 1;
+}
+
+int QueryGetRow(lua_State* state)
+{
+    LuaQuery* holder = nullptr;
+    QueryNamedResult* result = RequireQueryResult(state, 1, &holder);
+    if (!holder->hasRow)
     {
-        Field* fields = result->Fetch();
-        lua_newtable(state);
+        lua_pushnil(state);
+        return 1;
+    }
 
-        for (uint32 i = 0; i < fieldCount; ++i)
+    Field* fields = result->Fetch();
+    if (!fields)
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    uint32 fieldCount = result->GetFieldCount();
+    QueryFieldNames const& names = result->GetFieldNames();
+    lua_newtable(state);
+    for (uint32 i = 0; i < fieldCount; ++i)
+    {
+        PushField(state, fields[i]);
+        lua_rawseti(state, -2, i + 1);
+
+        if (i < names.size() && !names[i].empty())
         {
             PushField(state, fields[i]);
-            lua_rawseti(state, -2, i + 1);
+            lua_setfield(state, -2, names[i].c_str());
         }
-
-        lua_rawseti(state, -2, rowIndex++);
-    } while (result->NextRow());
-
+    }
     return 1;
+}
+
+int QueryGC(lua_State* state)
+{
+    LuaQuery* holder = CheckQuery(state, 1);
+    if (holder)
+    {
+        delete holder->result;
+        holder->result = nullptr;
+        holder->hasRow = false;
+    }
+    return 0;
 }
 
 int LuaWorldDBQuery(lua_State* state)
 {
     char const* sql = luaL_checkstring(state, 1);
-    return PushQueryResult(state, WorldDatabase.Query(sql));
+    return PushQueryResult(state, WorldDatabase.QueryNamed(sql));
 }
 
 int LuaCharDBQuery(lua_State* state)
 {
     char const* sql = luaL_checkstring(state, 1);
-    return PushQueryResult(state, CharacterDatabase.Query(sql));
+    return PushQueryResult(state, CharacterDatabase.QueryNamed(sql));
 }
 
 int LuaLoginDBQuery(lua_State* state)
 {
     char const* sql = luaL_checkstring(state, 1);
-    return PushQueryResult(state, LoginDatabase.Query(sql));
+    return PushQueryResult(state, LoginDatabase.QueryNamed(sql));
 }
 
 int LuaWorldDBExecute(lua_State* state)
@@ -14493,6 +14698,7 @@ void TurtleLuaEngine::OpenState()
     RegisterSpellInfoMetatable();
     RegisterSpellTargetsMetatable();
     RegisterWorldPacketMetatable();
+    RegisterQueryMetatable();
     RegisterObjectGuidMetatable();
     RegisterChatHandlerMetatable();
     RegisterChannelMetatable();
@@ -16724,6 +16930,37 @@ void TurtleLuaEngine::RegisterWorldPacketMetatable()
     lua_setfield(_state, -2, "__index");
 
     SetMethod(_state, "__gc", &WorldPacketGC);
+
+    lua_pop(_state, 1);
+}
+
+void TurtleLuaEngine::RegisterQueryMetatable()
+{
+    luaL_newmetatable(_state, ELUNAQUERY_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "IsNull", &QueryIsNull);
+    SetMethod(_state, "IsNULL", &QueryIsNull);
+    SetMethod(_state, "GetColumnCount", &QueryGetColumnCount);
+    SetMethod(_state, "GetFieldCount", &QueryGetColumnCount);
+    SetMethod(_state, "GetRowCount", &QueryGetRowCount);
+    SetMethod(_state, "GetBool", &QueryGetBool);
+    SetMethod(_state, "GetUInt8", &QueryGetUInt8);
+    SetMethod(_state, "GetUInt16", &QueryGetUInt16);
+    SetMethod(_state, "GetUInt32", &QueryGetUInt32);
+    SetMethod(_state, "GetUInt64", &QueryGetUInt64);
+    SetMethod(_state, "GetInt8", &QueryGetInt8);
+    SetMethod(_state, "GetInt16", &QueryGetInt16);
+    SetMethod(_state, "GetInt32", &QueryGetInt32);
+    SetMethod(_state, "GetInt64", &QueryGetInt64);
+    SetMethod(_state, "GetFloat", &QueryGetFloat);
+    SetMethod(_state, "GetDouble", &QueryGetDouble);
+    SetMethod(_state, "GetString", &QueryGetString);
+    SetMethod(_state, "NextRow", &QueryNextRow);
+    SetMethod(_state, "GetRow", &QueryGetRow);
+    lua_setfield(_state, -2, "__index");
+
+    SetMethod(_state, "__gc", &QueryGC);
 
     lua_pop(_state, 1);
 }

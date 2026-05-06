@@ -383,6 +383,7 @@ private:
     void RegisterSpellInfoMetatable();
     void RegisterSpellTargetsMetatable();
     void RegisterWorldPacketMetatable();
+    void RegisterQueryMetatable();
     void RegisterObjectGuidMetatable();
     void RegisterChatHandlerMetatable();
     void RegisterChannelMetatable();
