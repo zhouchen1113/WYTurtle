@@ -5,8 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $VcpkgRoot,
 
-    [string] $MySqlVersion = "5.7.44",
-    [string] $OpenSslVersion = "1_1_1w"
+    [string] $MySqlVersion = "5.7.44"
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,36 +61,30 @@ Copy-Item -Path (Join-Path $mysqlRoot.FullName "include\*") -Destination $mysqlI
 Copy-FirstFile -Root $mysqlRoot.FullName -Filter "libmysql.lib" -Destination (Join-Path $releaseLibDir "libmySQL.lib")
 Copy-FirstFile -Root $mysqlRoot.FullName -Filter "libmysql.dll" -Destination (Join-Path $releaseLibDir "libmySQL.dll")
 
-$opensslInstaller = Join-Path $thirdPartyDir "Win64OpenSSL-$OpenSslVersion.msi"
-$opensslUrl = "https://slproweb.com/download/Win64OpenSSL-$OpenSslVersion.msi"
-Invoke-WebRequest -Uri $opensslUrl -OutFile $opensslInstaller
+Get-ChildItem -LiteralPath $mysqlRoot.FullName -Recurse -File -Filter "*.dll" |
+    Where-Object { $_.Name -like "libssl*.dll" -or $_.Name -like "libcrypto*.dll" -or $_.Name -ieq "libmysql.dll" } |
+    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $releaseLibDir -Force }
 
-$opensslExtractDir = Join-Path $thirdPartyDir "openssl"
-New-Item -ItemType Directory -Force -Path $opensslExtractDir | Out-Null
-$process = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/a", "`"$opensslInstaller`"", "/qn", "TARGETDIR=`"$opensslExtractDir`"") -Wait -PassThru
-if ($process.ExitCode -ne 0) {
-    throw "OpenSSL MSI extraction failed with exit code $($process.ExitCode)"
-}
+$vcpkgInstalledDir = Join-Path $VcpkgRoot "installed\x64-windows"
+$opensslSourceIncludeDir = Join-Path $vcpkgInstalledDir "include\openssl"
+$opensslSourceLibDir = Join-Path $vcpkgInstalledDir "lib"
+$vcpkgBinDir = Join-Path $VcpkgRoot "installed\x64-windows\bin"
 
-$opensslInclude = Get-ChildItem -LiteralPath $opensslExtractDir -Directory -Recurse |
-    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "openssl\ssl.h") } |
-    Select-Object -First 1
-if (-not $opensslInclude) {
-    throw "Cannot find OpenSSL include directory"
+if (-not (Test-Path -LiteralPath (Join-Path $opensslSourceIncludeDir "ssl.h"))) {
+    throw "Cannot find vcpkg OpenSSL headers. Make sure openssl:x64-windows is installed."
 }
 
 $opensslIncludeDst = Join-Path $includeDir "openssl"
 New-CleanDirectory -Path $opensslIncludeDst
-Copy-Item -Path (Join-Path $opensslInclude.FullName "openssl\*") -Destination $opensslIncludeDst -Recurse -Force
+Copy-Item -Path (Join-Path $opensslSourceIncludeDir "*") -Destination $opensslIncludeDst -Recurse -Force
 
-Copy-FirstFile -Root $opensslExtractDir -Filter "libssl.lib" -Destination (Join-Path $releaseLibDir "libssl.lib")
-Copy-FirstFile -Root $opensslExtractDir -Filter "libcrypto.lib" -Destination (Join-Path $releaseLibDir "libcrypto.lib")
+$opensslNestedIncludeDst = Join-Path $opensslIncludeDst "openssl"
+New-Item -ItemType Directory -Force -Path $opensslNestedIncludeDst | Out-Null
+Copy-Item -Path (Join-Path $opensslSourceIncludeDir "*") -Destination $opensslNestedIncludeDst -Recurse -Force
 
-Get-ChildItem -LiteralPath $opensslExtractDir -Recurse -File -Filter "*.dll" |
-    Where-Object { $_.Name -like "libssl*.dll" -or $_.Name -like "libcrypto*.dll" } |
-    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $releaseLibDir -Force }
+Copy-Item -LiteralPath (Join-Path $opensslSourceLibDir "libssl.lib") -Destination (Join-Path $releaseLibDir "libssl.lib") -Force
+Copy-Item -LiteralPath (Join-Path $opensslSourceLibDir "libcrypto.lib") -Destination (Join-Path $releaseLibDir "libcrypto.lib") -Force
 
-$vcpkgBinDir = Join-Path $VcpkgRoot "installed\x64-windows\bin"
 if (Test-Path -LiteralPath $vcpkgBinDir) {
     Get-ChildItem -LiteralPath $vcpkgBinDir -File -Filter "*.dll" |
         ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $releaseLibDir -Force }
