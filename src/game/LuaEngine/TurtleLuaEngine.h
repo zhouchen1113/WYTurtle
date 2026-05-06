@@ -80,6 +80,7 @@ enum TurtleLuaPlayerEvents
     PLAYER_EVENT_ON_COMMAND = 42,
     PLAYER_EVENT_ON_PET_ADDED_TO_WORLD = 43,
     PLAYER_EVENT_ON_LEARN_SPELL = 44,
+    PLAYER_EVENT_ON_ACHIEVEMENT_COMPLETE = 45,
     PLAYER_EVENT_ON_FFAPVP_CHANGE = 46,
     PLAYER_EVENT_ON_UPDATE_AREA = 47,
     PLAYER_EVENT_ON_CAN_INIT_TRADE = 48,
@@ -277,6 +278,7 @@ public:
     void OnPlayerQuestAbandon(Player* player, uint32 questId);
     void OnPetAddedToWorld(Player* player, Creature* pet);
     void OnPlayerLearnSpell(Player* player, uint32 spellId);
+    void OnPlayerAchievementComplete(Player* player, uint32 achievementId);
     void OnPlayerFFAPvPChange(Player* player, bool hasFfaPvp);
     void OnPlayerPetKill(Player* player, Creature* killed);
     bool OnPlayerCommand(Player* player, std::string const& command);
@@ -522,6 +524,7 @@ private:
     void RegisterBattleGroundMetatable();
     void RegisterTicketMetatable();
     void RegisterAuraMetatable();
+    void RegisterAchievementMetatable();
     void RegisterSpellMetatable();
     void RegisterSpellInfoMetatable();
     void RegisterSpellTargetsMetatable();

@@ -93,6 +93,7 @@ constexpr char const* INSTANCEDATA_METATABLE = "Turtle.InstanceData";
 constexpr char const* BATTLEGROUND_METATABLE = "Turtle.BattleGround";
 constexpr char const* TICKET_METATABLE = "Turtle.Ticket";
 constexpr char const* AURA_METATABLE = "Turtle.Aura";
+constexpr char const* ACHIEVEMENT_METATABLE = "Turtle.Achievement";
 constexpr char const* SPELL_METATABLE = "Turtle.Spell";
 constexpr char const* SPELLINFO_METATABLE = "Turtle.SpellInfo";
 constexpr char const* SPELLTARGETS_METATABLE = "Turtle.SpellCastTargets";
@@ -364,6 +365,11 @@ struct LuaAura
     Aura* aura;
 };
 
+struct LuaAchievement
+{
+    uint32 id;
+};
+
 struct LuaSpell
 {
     Spell* spell;
@@ -629,6 +635,11 @@ Aura* CheckAura(lua_State* state, int index)
 {
     auto* holder = static_cast<LuaAura*>(luaL_checkudata(state, index, AURA_METATABLE));
     return holder ? holder->aura : nullptr;
+}
+
+LuaAchievement* CheckAchievement(lua_State* state, int index)
+{
+    return static_cast<LuaAchievement*>(luaL_checkudata(state, index, ACHIEVEMENT_METATABLE));
 }
 
 Spell* CheckSpell(lua_State* state, int index)
@@ -926,6 +937,15 @@ void PushAuraValue(lua_State* state, Aura* aura)
     holder->aura = aura;
 
     luaL_getmetatable(state, AURA_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void PushAchievementValue(lua_State* state, uint32 achievementId)
+{
+    auto* holder = static_cast<LuaAchievement*>(lua_newuserdata(state, sizeof(LuaAchievement)));
+    holder->id = achievementId;
+
+    luaL_getmetatable(state, ACHIEVEMENT_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -5989,6 +6009,7 @@ int PlayerSetAchievement(lua_State* state)
     SetLuaPlayerSettingValue(player, "eluna.compat.achievement", achievementId, LuaAchievementGeneration(player));
     SetLuaPlayerSettingValue(player, "eluna.compat.achievement_count", 0,
         count == std::numeric_limits<uint32>::max() ? count : count + 1);
+    sTurtleLuaEngine.OnPlayerAchievementComplete(player, achievementId);
     return 0;
 }
 
@@ -17040,6 +17061,23 @@ int SpellTargetsIsEmpty(lua_State* state)
     return 1;
 }
 
+int AchievementGetId(lua_State* state)
+{
+    LuaAchievement* achievement = CheckAchievement(state, 1);
+    lua_pushinteger(state, achievement ? achievement->id : 0);
+    return 1;
+}
+
+int AchievementGetName(lua_State* state)
+{
+    LuaAchievement* achievement = CheckAchievement(state, 1);
+    (void)luaL_optinteger(state, 2, 0);
+
+    std::string name = achievement && achievement->id ? "Achievement " + std::to_string(achievement->id) : "";
+    lua_pushlstring(state, name.c_str(), name.size());
+    return 1;
+}
+
 int GemPropertiesGetSpellItemEnchantement(lua_State* state)
 {
     (void)CheckGemProperties(state, 1);
@@ -17771,6 +17809,7 @@ void TurtleLuaEngine::OpenState()
     RegisterBattleGroundMetatable();
     RegisterTicketMetatable();
     RegisterAuraMetatable();
+    RegisterAchievementMetatable();
     RegisterSpellMetatable();
     RegisterSpellInfoMetatable();
     RegisterSpellTargetsMetatable();
@@ -19915,6 +19954,18 @@ void TurtleLuaEngine::RegisterAuraMetatable()
     SetMethod(_state, "SetMaxDuration", &AuraSetMaxDuration);
     SetMethod(_state, "SetStackAmount", &AuraSetStackAmount);
     SetMethod(_state, "Remove", &AuraRemove);
+    lua_setfield(_state, -2, "__index");
+
+    lua_pop(_state, 1);
+}
+
+void TurtleLuaEngine::RegisterAchievementMetatable()
+{
+    luaL_newmetatable(_state, ACHIEVEMENT_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "GetId", &AchievementGetId);
+    SetMethod(_state, "GetName", &AchievementGetName);
     lua_setfield(_state, -2, "__index");
 
     lua_pop(_state, 1);
@@ -22890,6 +22941,39 @@ void TurtleLuaEngine::OnPlayerLearnSpell(Player* player, uint32 spellId)
         if (lua_pcall(_state, 3, 0, 0) != LUA_OK)
         {
             LogError("player learn spell event");
+            lua_pop(_state, 1);
+        }
+    }
+}
+
+void TurtleLuaEngine::OnPlayerAchievementComplete(Player* player, uint32 achievementId)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !player || !achievementId)
+        return;
+
+    auto itr = _playerEvents.find(PLAYER_EVENT_ON_ACHIEVEMENT_COMPLETE);
+    if (itr == _playerEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, PLAYER_EVENT_ON_ACHIEVEMENT_COMPLETE);
+        PushPlayer(player);
+        PushAchievementValue(_state, achievementId);
+
+        if (lua_pcall(_state, 3, 0, 0) != LUA_OK)
+        {
+            LogError("player achievement complete event");
             lua_pop(_state, 1);
         }
     }
