@@ -18376,6 +18376,78 @@ bool TurtleLuaEngine::OnPlayerChannelChat(Player* player, uint32 type, uint32 la
     return CallPlayerChatEvent(PLAYER_EVENT_ON_CHANNEL_CHAT, "player channel chat event", player, type, lang, message, nullptr, nullptr, nullptr, channelName.c_str());
 }
 
+bool TurtleLuaEngine::OnAddonMessage(Player* sender, uint32 type, std::string const& message, Player* receiver, Guild* guild, Group* group, uint32 channelId, bool hasChannelTarget)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled())
+        return true;
+
+    auto itr = _serverEvents.find(ADDON_EVENT_ON_MESSAGE);
+    if (itr == _serverEvents.end())
+        return true;
+
+    std::string prefix;
+    std::string content;
+    bool hasContent = false;
+
+    std::string::size_type delimiter = message.find('\t');
+    if (delimiter == std::string::npos)
+        prefix = message;
+    else
+    {
+        prefix = message.substr(0, delimiter);
+        content = message.substr(delimiter + 1);
+        hasContent = true;
+    }
+
+    bool allow = true;
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, ADDON_EVENT_ON_MESSAGE);
+        PushPlayer(sender);
+        lua_pushinteger(_state, type);
+        lua_pushlstring(_state, prefix.c_str(), prefix.size());
+        if (hasContent)
+            lua_pushlstring(_state, content.c_str(), content.size());
+        else
+            lua_pushnil(_state);
+
+        if (receiver)
+            PushPlayer(receiver);
+        else if (guild)
+            PushGuild(guild);
+        else if (group)
+            PushGroup(group);
+        else if (hasChannelTarget)
+            lua_pushinteger(_state, channelId);
+        else
+            lua_pushnil(_state);
+
+        if (lua_pcall(_state, 6, 1, 0) != LUA_OK)
+        {
+            LogError("addon message event");
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        if (lua_isboolean(_state, -1) && !lua_toboolean(_state, -1))
+            allow = false;
+
+        lua_pop(_state, 1);
+    }
+
+    return allow;
+}
+
 void TurtleLuaEngine::OnPlayerEmote(Player* player, uint32 emote)
 {
     std::lock_guard<std::recursive_mutex> guard(_lock);

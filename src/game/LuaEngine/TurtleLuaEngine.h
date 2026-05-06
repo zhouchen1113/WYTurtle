@@ -101,6 +101,7 @@ enum TurtleLuaServerEvents
     WORLD_EVENT_ON_STARTUP = 14,
     WORLD_EVENT_ON_SHUTDOWN = 15,
     ELUNA_EVENT_ON_LUA_STATE_CLOSE = 16,
+    ADDON_EVENT_ON_MESSAGE = 30,
     ELUNA_EVENT_ON_LUA_STATE_OPEN = 33,
 };
 
@@ -236,6 +237,7 @@ public:
     bool OnPlayerGroupChat(Player* player, uint32 type, uint32 lang, std::string& message, Group* group);
     bool OnPlayerGuildChat(Player* player, uint32 type, uint32 lang, std::string& message, Guild* guild);
     bool OnPlayerChannelChat(Player* player, uint32 type, uint32 lang, std::string& message, std::string const& channelName);
+    bool OnAddonMessage(Player* sender, uint32 type, std::string const& message, Player* receiver, Guild* guild, Group* group, uint32 channelId, bool hasChannelTarget);
     void OnPlayerEmote(Player* player, uint32 emote);
     bool OnPlayerCanGroupInvite(Player* player, std::string const& memberName);
     bool OnPlayerCanResurrect(Player* player);

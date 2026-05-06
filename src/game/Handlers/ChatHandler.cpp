@@ -372,6 +372,61 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         }
     }
 
+#ifdef USE_LUA
+    if (lang == LANG_ADDON)
+    {
+        Player* addonReceiver = nullptr;
+        Guild* addonGuild = nullptr;
+        Group* addonGroup = nullptr;
+        uint32 addonChannelId = 0;
+        bool hasAddonChannelTarget = false;
+
+        switch (type)
+        {
+            case CHAT_MSG_WHISPER:
+            {
+                std::string targetName = to;
+                if (normalizePlayerName(targetName))
+                    addonReceiver = sObjectMgr.GetPlayer(targetName.c_str());
+                break;
+            }
+            case CHAT_MSG_GUILD:
+            case CHAT_MSG_OFFICER:
+                if (GetMasterPlayer() && GetMasterPlayer()->GetGuildId())
+                    addonGuild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId());
+                break;
+            case CHAT_MSG_PARTY:
+            case CHAT_MSG_RAID:
+            case CHAT_MSG_RAID_LEADER:
+            case CHAT_MSG_RAID_WARNING:
+            case CHAT_MSG_BATTLEGROUND:
+            case CHAT_MSG_BATTLEGROUND_LEADER:
+                addonGroup = GetPlayer()->GetOriginalGroup();
+                if (!addonGroup)
+                    addonGroup = GetPlayer()->GetGroup();
+                break;
+            case CHAT_MSG_CHANNEL:
+            {
+                PlayerPointer playerPointer(GetPlayerPointer());
+                if (ChannelMgr* cMgr = channelMgr(playerPointer->GetTeam()))
+                {
+                    if (Channel* chn = cMgr->GetChannel(channel, playerPointer, false))
+                    {
+                        addonChannelId = chn->GetChannelId();
+                        hasAddonChannelTarget = true;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        if (!sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
+            return;
+    }
+#endif
+
     if (HandleTurtleAddonMessages(lang, type, msg))
     {
         // Message was a turtle addon message, no point to process further
