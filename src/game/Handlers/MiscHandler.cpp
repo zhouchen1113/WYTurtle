@@ -807,6 +807,11 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
         return;
     }
 
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnAreaTrigger(pPlayer, triggerId))
+        return;
+#endif
+
     if (sScriptMgr.OnAreaTrigger(pPlayer, pTrigger))
         return;
 

@@ -118,6 +118,8 @@ enum TurtleLuaServerEvents
     MAP_EVENT_ON_PLAYER_ENTER = 21,
     MAP_EVENT_ON_PLAYER_LEAVE = 22,
     MAP_EVENT_ON_UPDATE = 23,
+    TRIGGER_EVENT_ON_TRIGGER = 24,
+    WEATHER_EVENT_ON_CHANGE = 25,
     ADDON_EVENT_ON_MESSAGE = 30,
     ELUNA_EVENT_ON_LUA_STATE_OPEN = 33,
     GAME_EVENT_START = 34,
@@ -269,6 +271,8 @@ public:
     void OnShutdownCancel();
     void OnGameEventStart(uint32 gameEventId);
     void OnGameEventStop(uint32 gameEventId);
+    bool OnAreaTrigger(Player* player, uint32 triggerId);
+    void OnWeatherChange(uint32 zoneId, uint32 state, float grade);
 
     void OnPlayerLogin(Player* player);
     void OnPlayerLogout(Player* player);

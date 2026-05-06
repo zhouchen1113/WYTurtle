@@ -21265,6 +21265,84 @@ void TurtleLuaEngine::CallServerEvent(uint32 eventId, uint32 arg1, uint32 arg2)
     }
 }
 
+bool TurtleLuaEngine::OnAreaTrigger(Player* player, uint32 triggerId)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !player)
+        return false;
+
+    auto itr = _serverEvents.find(TRIGGER_EVENT_ON_TRIGGER);
+    if (itr == _serverEvents.end())
+        return false;
+
+    bool handled = false;
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, TRIGGER_EVENT_ON_TRIGGER);
+        PushPlayer(player);
+        lua_pushinteger(_state, triggerId);
+
+        if (lua_pcall(_state, 3, 1, 0) != LUA_OK)
+        {
+            LogError("area trigger event");
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        if (lua_isboolean(_state, -1) && lua_toboolean(_state, -1))
+            handled = true;
+        lua_pop(_state, 1);
+
+        if (handled)
+            break;
+    }
+
+    return handled;
+}
+
+void TurtleLuaEngine::OnWeatherChange(uint32 zoneId, uint32 state, float grade)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled())
+        return;
+
+    auto itr = _serverEvents.find(WEATHER_EVENT_ON_CHANGE);
+    if (itr == _serverEvents.end())
+        return;
+
+    std::vector<int> functionRefs = itr->second;
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        lua_pushinteger(_state, WEATHER_EVENT_ON_CHANGE);
+        lua_pushinteger(_state, zoneId);
+        lua_pushinteger(_state, state);
+        lua_pushnumber(_state, grade);
+
+        if (lua_pcall(_state, 4, 0, 0) != LUA_OK)
+        {
+            LogError("weather change event");
+            lua_pop(_state, 1);
+        }
+    }
+}
+
 void TurtleLuaEngine::CallServerMapEvent(uint32 eventId, Map* map, Player* player, uint32 diff)
 {
     auto itr = _serverEvents.find(eventId);
