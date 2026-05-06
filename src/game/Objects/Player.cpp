@@ -7857,7 +7857,11 @@ void Player::RewardReputation(Unit *pVictim, float rate)
     if (pVictim->IsPet())
         return;
 
-    ReputationOnKillEntry const* Rep = sObjectMgr.GetReputationOnKillEntry(((Creature*)pVictim)->GetEntry());
+    Creature* creatureVictim = static_cast<Creature*>(pVictim);
+    if (creatureVictim->IsReputationRewardDisabled())
+        return;
+
+    ReputationOnKillEntry const* Rep = sObjectMgr.GetReputationOnKillEntry(creatureVictim->GetEntry());
 
     if (!Rep)
         return;

@@ -10339,6 +10339,22 @@ int CreatureGetCorpseDelay(lua_State* state)
     return 1;
 }
 
+int CreatureIsReputationGainDisabled(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    lua_pushboolean(state, creature && creature->IsReputationRewardDisabled());
+    return 1;
+}
+
+int CreatureSetDisableReputationGain(lua_State* state)
+{
+    Creature* creature = CheckCreature(state, 1);
+    bool disable = lua_isnoneornil(state, 2) ? true : lua_toboolean(state, 2) != 0;
+    if (creature)
+        creature->SetReputationRewardDisabled(disable);
+    return 0;
+}
+
 int CreatureGetLootMode(lua_State* state)
 {
     (void)CheckCreature(state, 1);
@@ -17774,8 +17790,8 @@ void TurtleLuaEngine::RegisterCreatureMetatable()
     SetMethod(_state, "SetRespawnDelay", &CreatureSetRespawnDelay);
     SetMethod(_state, "IsRegeneratingHealth", &CreatureIsRegeneratingHealth);
     SetMethod(_state, "SetRegeneratingHealth", &CreatureSetRegeneratingHealth);
-    SetMethod(_state, "IsReputationGainDisabled", &CreatureCompatReturnFalse);
-    SetMethod(_state, "SetDisableReputationGain", &CreatureCompatNoop);
+    SetMethod(_state, "IsReputationGainDisabled", &CreatureIsReputationGainDisabled);
+    SetMethod(_state, "SetDisableReputationGain", &CreatureSetDisableReputationGain);
     SetMethod(_state, "CanCompleteQuest", &CreatureCanCompleteQuest);
     SetMethod(_state, "IsTargetableForAttack", &CreatureIsTargetableForAttack);
     SetMethod(_state, "CanAssistTo", &CreatureCanAssistTo);

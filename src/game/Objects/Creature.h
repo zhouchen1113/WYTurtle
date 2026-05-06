@@ -601,6 +601,8 @@ class Creature : public Unit
         bool IsDespawned() const { return GetDeathState() ==  DEAD; }
         uint32 GetCorpseDelay() const { return m_corpseDelay; }
         void SetCorpseDelay(uint32 delay) { m_corpseDelay = delay; }
+        bool IsReputationRewardDisabled() const { return m_reputationRewardDisabled; }
+        void SetReputationRewardDisabled(bool disabled) { m_reputationRewardDisabled = disabled; }
         bool IsRacialLeader() const { return GetCreatureInfo()->racial_leader; }
         bool IsCivilian() const { return GetCreatureInfo()->civilian; }
         bool IsTrigger() const { return HasExtraFlag(CREATURE_FLAG_EXTRA_INVISIBLE); }
@@ -1088,6 +1090,7 @@ class Creature : public Unit
         time_t m_respawnTime;                               // (secs) time of next respawn
         uint32 m_respawnDelay;                              // (secs) delay between corpse disappearance and respawning
         uint32 m_corpseDelay;                               // (secs) delay between death and corpse disappearance
+        bool m_reputationRewardDisabled;
         float m_wanderDistance;
 
         time_t m_combatStartTime;
