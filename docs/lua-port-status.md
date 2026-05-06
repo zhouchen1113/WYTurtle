@@ -76,6 +76,7 @@ E:\TurtleBY
 - 全局动态出生函数补充：新增 `PerformIngameSpawn`，支持临时/保存的生物和游戏物体出生；临时出生走地图召唤接口，保存出生走 Turtle 现有静态 GUID、保存到 DB、加入网格的路径。
 - 全局 DBC 查询函数补充：新增 `LookupEntry`，当前支持 `Spell` / `SpellEntry` 查询并返回 `SpellInfo` 对象；`GemProperties` 在 Turtle 1.12 中没有对应 DBC，作为兼容名称查询不到时返回空。
 - 全局 Group/Guild 事件补充：新增 `RegisterGroupEvent`、`RegisterGuildEvent`、`ClearGroupEvents`、`ClearGuildEvents`，并在 `Group.cpp` / `Guild.cpp` 接入真实触发点。
+- 全局玩家 Gossip 事件补充：新增 `RegisterPlayerGossipEvent`、`ClearPlayerGossipEvents`，并在客户端选择玩家自身 Gossip 菜单项时回调 Lua。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -125,6 +126,7 @@ RegisterSpellEvent(spellId, eventId, function)
 RegisterCreatureGossipEvent(entry, eventId, function)
 RegisterGameObjectGossipEvent(entry, eventId, function)
 RegisterItemGossipEvent(entry, eventId, function)
+RegisterPlayerGossipEvent(playerGuidLow, eventId, function)
 ClearPlayerEvents([eventId])
 ClearServerEvents([eventId])
 ClearGroupEvents([eventId])
@@ -137,6 +139,7 @@ ClearSpellEvents(spellId, [eventId])
 ClearCreatureGossipEvents(entry, [eventId])
 ClearGameObjectGossipEvents(entry, [eventId])
 ClearItemGossipEvents(entry, [eventId])
+ClearPlayerGossipEvents(playerGuidLow, [eventId])
 GetLuaEngine()
 GetCoreName()
 GetRealmID()
@@ -243,6 +246,7 @@ print(...)
 - `RemoveEvents(false)` 只清理全局 `CreateLuaEvent` 创建的定时事件；`RemoveEvents(true)` 会连同对象绑定事件一起清理。
 - `RegisterGroupEvent` / `ClearGroupEvents` 当前已接通到组队创建、邀请、加入、移除、队长变化、解散等核心触发点。
 - `RegisterGuildEvent` / `ClearGuildEvents` 当前已接通到公会创建、成员加入、成员移除、MOTD 变更、信息变更、解散等核心触发点。
+- `RegisterPlayerGossipEvent(playerGuidLow, 2, function)` 当前接通玩家自身 Gossip 菜单选择事件；玩家 Gossip 没有 `1` 号 hello 触发，脚本需要自己调用 `player:GossipMenuAddItem()` / `player:GossipSendMenu()` 打开菜单。
 - Group 事件参数：`1` 加入 `(event, group, guid)`；`2` 邀请 `(event, group, guid)`；`3` 移除 `(event, group, guid, method, nil, nil)`；`4` 队长变化 `(event, group, newLeaderGuid, oldLeaderGuid)`；`5` 解散 `(event, group)`；`6` 创建 `(event, group, leaderGuid, groupType)`。
 - Guild 事件参数：`1` 加入 `(event, guild, player, rank)`；`2` 移除 `(event, guild, player, isDisbanding)`；`3` MOTD 变化 `(event, guild, newMotd)`；`4` 信息变化 `(event, guild, newInfo)`；`5` 创建 `(event, guild, leader, name)`；`6` 解散 `(event, guild)`。离线成员无法取得 `Player` 对象时会传 `nil`。
 - `RunCommand(command)` 按控制台权限把 GM 命令加入世界线程队列执行，命令前面的 `.` / `!` 可以带也可以不带。

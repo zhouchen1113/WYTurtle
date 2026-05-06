@@ -307,6 +307,7 @@ public:
     void RegisterCreatureGossipEvent(uint32 entry, uint32 eventId, int functionRef);
     void RegisterGameObjectGossipEvent(uint32 entry, uint32 eventId, int functionRef);
     void RegisterItemGossipEvent(uint32 entry, uint32 eventId, int functionRef);
+    void RegisterPlayerGossipEvent(uint32 entry, uint32 eventId, int functionRef);
     void ClearPlayerEvents(uint32 eventId, bool allEvents);
     void ClearServerEvents(uint32 eventId, bool allEvents);
     void ClearGroupEvents(uint32 eventId, bool allEvents);
@@ -319,6 +320,7 @@ public:
     void ClearCreatureGossipEvents(uint32 entry, uint32 eventId, bool allEvents);
     void ClearGameObjectGossipEvents(uint32 entry, uint32 eventId, bool allEvents);
     void ClearItemGossipEvents(uint32 entry, uint32 eventId, bool allEvents);
+    void ClearPlayerGossipEvents(uint32 entry, uint32 eventId, bool allEvents);
 
     bool OnCreatureGossipHello(Player* player, Creature* creature);
     bool OnCreatureGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action, char const* code);
@@ -326,6 +328,7 @@ public:
     bool OnGameObjectGossipSelect(Player* player, GameObject* go, uint32 sender, uint32 action, char const* code);
     bool OnItemGossipHello(Player* player, Item* item, SpellCastTargets& targets);
     bool OnItemGossipSelect(Player* player, Item* item, uint32 sender, uint32 action, char const* code);
+    bool OnPlayerGossipSelect(Player* player, uint32 sender, uint32 action, char const* code);
     void OnGroupCreate(Group* group, ObjectGuid const& leaderGuid, uint32 groupType);
     void OnGroupMemberAdd(Group* group, ObjectGuid const& guid);
     void OnGroupMemberInvite(Group* group, ObjectGuid const& guid);
@@ -461,6 +464,7 @@ private:
     std::map<uint32, std::map<uint32, std::vector<int>>> _creatureGossipEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _gameObjectGossipEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _itemGossipEvents;
+    std::map<uint32, std::map<uint32, std::vector<int>>> _playerGossipEvents;
     std::vector<TimedEvent> _timedEvents;
 };
 

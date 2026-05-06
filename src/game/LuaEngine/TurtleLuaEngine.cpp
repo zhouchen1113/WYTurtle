@@ -1132,6 +1132,11 @@ int LuaRegisterItemGossipEvent(lua_State* state)
     return RegisterEntryEvent(state, &TurtleLuaEngine::RegisterItemGossipEvent);
 }
 
+int LuaRegisterPlayerGossipEvent(lua_State* state)
+{
+    return RegisterEntryEvent(state, &TurtleLuaEngine::RegisterPlayerGossipEvent);
+}
+
 int LuaClearPlayerEvents(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -1242,6 +1247,11 @@ int LuaClearGameObjectGossipEvents(lua_State* state)
 int LuaClearItemGossipEvents(lua_State* state)
 {
     return LuaClearEntryEvent(state, &TurtleLuaEngine::ClearItemGossipEvents);
+}
+
+int LuaClearPlayerGossipEvents(lua_State* state)
+{
+    return LuaClearEntryEvent(state, &TurtleLuaEngine::ClearPlayerGossipEvents);
 }
 
 int LuaReloadEluna(lua_State* state)
@@ -15537,6 +15547,7 @@ void TurtleLuaEngine::CloseState()
     _creatureGossipEvents.clear();
     _gameObjectGossipEvents.clear();
     _itemGossipEvents.clear();
+    _playerGossipEvents.clear();
     _timedEvents.clear();
 
     if (_state)
@@ -15560,6 +15571,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "RegisterCreatureGossipEvent", &LuaRegisterCreatureGossipEvent);
     lua_register(_state, "RegisterGameObjectGossipEvent", &LuaRegisterGameObjectGossipEvent);
     lua_register(_state, "RegisterItemGossipEvent", &LuaRegisterItemGossipEvent);
+    lua_register(_state, "RegisterPlayerGossipEvent", &LuaRegisterPlayerGossipEvent);
     lua_register(_state, "ClearPlayerEvents", &LuaClearPlayerEvents);
     lua_register(_state, "ClearServerEvents", &LuaClearServerEvents);
     lua_register(_state, "ClearGroupEvents", &LuaClearGroupEvents);
@@ -15572,6 +15584,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "ClearCreatureGossipEvents", &LuaClearCreatureGossipEvents);
     lua_register(_state, "ClearGameObjectGossipEvents", &LuaClearGameObjectGossipEvents);
     lua_register(_state, "ClearItemGossipEvents", &LuaClearItemGossipEvents);
+    lua_register(_state, "ClearPlayerGossipEvents", &LuaClearPlayerGossipEvents);
     lua_register(_state, "GetLuaEngine", &LuaGetLuaEngine);
     lua_register(_state, "GetCoreName", &LuaGetCoreName);
     lua_register(_state, "GetRealmID", &LuaGetRealmID);
@@ -18093,6 +18106,11 @@ void TurtleLuaEngine::RegisterItemGossipEvent(uint32 entry, uint32 eventId, int 
     _itemGossipEvents[entry][eventId].push_back(functionRef);
 }
 
+void TurtleLuaEngine::RegisterPlayerGossipEvent(uint32 entry, uint32 eventId, int functionRef)
+{
+    _playerGossipEvents[entry][eventId].push_back(functionRef);
+}
+
 void TurtleLuaEngine::ClearPlayerEvents(uint32 eventId, bool allEvents)
 {
     ClearEventStore(_state, _playerEvents, eventId, allEvents);
@@ -18151,6 +18169,11 @@ void TurtleLuaEngine::ClearGameObjectGossipEvents(uint32 entry, uint32 eventId, 
 void TurtleLuaEngine::ClearItemGossipEvents(uint32 entry, uint32 eventId, bool allEvents)
 {
     ClearEntryEventStore(_state, _itemGossipEvents, entry, eventId, allEvents);
+}
+
+void TurtleLuaEngine::ClearPlayerGossipEvents(uint32 entry, uint32 eventId, bool allEvents)
+{
+    ClearEntryEventStore(_state, _playerGossipEvents, entry, eventId, allEvents);
 }
 
 uint32 TurtleLuaEngine::CreateTimedEvent(int functionRef, uint32 delay, uint32 repeats)
@@ -21722,6 +21745,32 @@ bool TurtleLuaEngine::OnItemGossipSelect(Player* player, Item* item, uint32 send
         lua_pushnil(_state);
 
     return CallEntryEvent(_itemGossipEvents, item->GetEntry(), GOSSIP_EVENT_ON_SELECT, 6);
+}
+
+bool TurtleLuaEngine::OnPlayerGossipSelect(Player* player, uint32 sender, uint32 action, char const* code)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !player)
+        return false;
+
+    uint32 entry = player->GetObjectGuid().GetCounter();
+    auto entryItr = _playerGossipEvents.find(entry);
+    if (entryItr == _playerGossipEvents.end() || entryItr->second.find(GOSSIP_EVENT_ON_SELECT) == entryItr->second.end())
+        return false;
+
+    player->PlayerTalkClass->ClearMenus();
+
+    lua_pushinteger(_state, GOSSIP_EVENT_ON_SELECT);
+    PushPlayer(player);
+    lua_pushinteger(_state, sender);
+    lua_pushinteger(_state, action);
+    if (code)
+        lua_pushstring(_state, code);
+    else
+        lua_pushnil(_state);
+
+    return CallEntryEvent(_playerGossipEvents, entry, GOSSIP_EVENT_ON_SELECT, 5);
 }
 
 bool TurtleLuaEngine::OnGameObjectUse(Player* player, GameObject* go)

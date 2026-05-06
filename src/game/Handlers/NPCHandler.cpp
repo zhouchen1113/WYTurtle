@@ -39,6 +39,9 @@
 #include "GuildMgr.h"
 #include "Chat.h"
 #include "CharacterDatabaseCache.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 enum StableResultCode
 {
@@ -459,6 +462,18 @@ void WorldSession::HandleGossipSelectOptionOpcode(WorldPacket & recv_data)
         }
 
         sScriptMgr.OnGossipSelect(_player, pItem, sender, action, code.empty() ? nullptr : code.c_str());
+    }
+    else if (guid.IsPlayer())
+    {
+        if (guid != _player->GetObjectGuid())
+        {
+            DEBUG_LOG("WORLD: HandleGossipSelectOptionOpcode - %s player gossip target mismatch.", guid.GetString().c_str());
+            return;
+        }
+
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerGossipSelect(_player, sender, action, code.empty() ? nullptr : code.c_str());
+#endif
     }
 }
 
