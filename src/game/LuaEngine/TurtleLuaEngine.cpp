@@ -1102,6 +1102,22 @@ int LuaRegisterCreatureEvent(lua_State* state)
     return RegisterEntryEvent(state, &TurtleLuaEngine::RegisterCreatureEvent);
 }
 
+int LuaRegisterUniqueCreatureEvent(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    ObjectGuid guid = CheckObjectGuidValue(state, 1);
+    uint32 instanceId = static_cast<uint32>(luaL_checkinteger(state, 2));
+    uint32 eventId = static_cast<uint32>(luaL_checkinteger(state, 3));
+    luaL_checktype(state, 4, LUA_TFUNCTION);
+    lua_pushvalue(state, 4);
+    int functionRef = luaL_ref(state, LUA_REGISTRYINDEX);
+    engine->RegisterUniqueCreatureEvent(guid, instanceId, eventId, functionRef);
+    return 0;
+}
+
 int LuaRegisterGameObjectEvent(lua_State* state)
 {
     return RegisterEntryEvent(state, &TurtleLuaEngine::RegisterGameObjectEvent);
@@ -1217,6 +1233,20 @@ int LuaClearEntryEvent(lua_State* state, void (TurtleLuaEngine::*clearer)(uint32
 int LuaClearCreatureEvents(lua_State* state)
 {
     return LuaClearEntryEvent(state, &TurtleLuaEngine::ClearCreatureEvents);
+}
+
+int LuaClearUniqueCreatureEvents(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    if (!engine)
+        return luaL_error(state, "Lua engine is not available");
+
+    ObjectGuid guid = CheckObjectGuidValue(state, 1);
+    uint32 instanceId = static_cast<uint32>(luaL_checkinteger(state, 2));
+    bool allEvents = lua_isnoneornil(state, 3);
+    uint32 eventId = allEvents ? 0 : static_cast<uint32>(luaL_checkinteger(state, 3));
+    engine->ClearUniqueCreatureEvents(guid, instanceId, eventId, allEvents);
+    return 0;
 }
 
 int LuaClearGameObjectEvents(lua_State* state)
@@ -15540,6 +15570,7 @@ void TurtleLuaEngine::CloseState()
     _serverEvents.clear();
     _playerEvents.clear();
     _creatureEvents.clear();
+    _uniqueCreatureEvents.clear();
     _gameObjectEvents.clear();
     _itemEvents.clear();
     _spellEvents.clear();
@@ -15565,6 +15596,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "RegisterGuildEvent", &LuaRegisterGuildEvent);
     lua_register(_state, "RegisterPacketEvent", &LuaRegisterPacketEvent);
     lua_register(_state, "RegisterCreatureEvent", &LuaRegisterCreatureEvent);
+    lua_register(_state, "RegisterUniqueCreatureEvent", &LuaRegisterUniqueCreatureEvent);
     lua_register(_state, "RegisterGameObjectEvent", &LuaRegisterGameObjectEvent);
     lua_register(_state, "RegisterItemEvent", &LuaRegisterItemEvent);
     lua_register(_state, "RegisterSpellEvent", &LuaRegisterSpellEvent);
@@ -15578,6 +15610,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "ClearGuildEvents", &LuaClearGuildEvents);
     lua_register(_state, "ClearPacketEvents", &LuaClearPacketEvents);
     lua_register(_state, "ClearCreatureEvents", &LuaClearCreatureEvents);
+    lua_register(_state, "ClearUniqueCreatureEvents", &LuaClearUniqueCreatureEvents);
     lua_register(_state, "ClearGameObjectEvents", &LuaClearGameObjectEvents);
     lua_register(_state, "ClearItemEvents", &LuaClearItemEvents);
     lua_register(_state, "ClearSpellEvents", &LuaClearSpellEvents);
@@ -18071,6 +18104,11 @@ void TurtleLuaEngine::RegisterCreatureEvent(uint32 entry, uint32 eventId, int fu
     _creatureEvents[entry][eventId].push_back(functionRef);
 }
 
+void TurtleLuaEngine::RegisterUniqueCreatureEvent(ObjectGuid const& guid, uint32 instanceId, uint32 eventId, int functionRef)
+{
+    _uniqueCreatureEvents[UniqueCreatureEventKey(guid, instanceId)][eventId].push_back(functionRef);
+}
+
 void TurtleLuaEngine::RegisterGameObjectEvent(uint32 entry, uint32 eventId, int functionRef)
 {
     _gameObjectEvents[entry][eventId].push_back(functionRef);
@@ -18134,6 +18172,33 @@ void TurtleLuaEngine::ClearGuildEvents(uint32 eventId, bool allEvents)
 void TurtleLuaEngine::ClearCreatureEvents(uint32 entry, uint32 eventId, bool allEvents)
 {
     ClearEntryEventStore(_state, _creatureEvents, entry, eventId, allEvents);
+}
+
+void TurtleLuaEngine::ClearUniqueCreatureEvents(ObjectGuid const& guid, uint32 instanceId, uint32 eventId, bool allEvents)
+{
+    auto key = UniqueCreatureEventKey(guid, instanceId);
+    auto entryItr = _uniqueCreatureEvents.find(key);
+    if (entryItr == _uniqueCreatureEvents.end())
+        return;
+
+    if (allEvents)
+    {
+        for (auto& eventPair : entryItr->second)
+            UnrefFunctionRefs(_state, eventPair.second);
+
+        _uniqueCreatureEvents.erase(entryItr);
+        return;
+    }
+
+    auto eventItr = entryItr->second.find(eventId);
+    if (eventItr == entryItr->second.end())
+        return;
+
+    UnrefFunctionRefs(_state, eventItr->second);
+    entryItr->second.erase(eventItr);
+
+    if (entryItr->second.empty())
+        _uniqueCreatureEvents.erase(entryItr);
 }
 
 void TurtleLuaEngine::ClearGameObjectEvents(uint32 entry, uint32 eventId, bool allEvents)
@@ -20988,7 +21053,7 @@ void TurtleLuaEngine::OnCreatureEnterCombat(Creature* creature, Unit* target)
     lua_pushinteger(_state, CREATURE_EVENT_ON_ENTER_COMBAT);
     PushCreature(creature);
     PushUnit(target);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_ENTER_COMBAT, 3);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_ENTER_COMBAT, 3);
 }
 
 void TurtleLuaEngine::OnCreatureLeaveCombat(Creature* creature)
@@ -21002,7 +21067,7 @@ void TurtleLuaEngine::OnCreatureLeaveCombat(Creature* creature)
 
     lua_pushinteger(_state, CREATURE_EVENT_ON_LEAVE_COMBAT);
     PushCreature(creature);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_LEAVE_COMBAT, 2);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_LEAVE_COMBAT, 2);
 }
 
 void TurtleLuaEngine::OnCreatureTargetDied(Creature* creature, Unit* victim)
@@ -21015,7 +21080,7 @@ void TurtleLuaEngine::OnCreatureTargetDied(Creature* creature, Unit* victim)
     lua_pushinteger(_state, CREATURE_EVENT_ON_TARGET_DIED);
     PushCreature(creature);
     PushUnit(victim);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_TARGET_DIED, 3);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_TARGET_DIED, 3);
 }
 
 void TurtleLuaEngine::OnCreatureDied(Creature* creature, Unit* killer)
@@ -21030,7 +21095,7 @@ void TurtleLuaEngine::OnCreatureDied(Creature* creature, Unit* killer)
     lua_pushinteger(_state, CREATURE_EVENT_ON_DIED);
     PushCreature(creature);
     PushUnit(killer);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_DIED, 3);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_DIED, 3);
 }
 
 void TurtleLuaEngine::OnCreatureSpawn(Creature* creature)
@@ -21044,7 +21109,7 @@ void TurtleLuaEngine::OnCreatureSpawn(Creature* creature)
 
     lua_pushinteger(_state, CREATURE_EVENT_ON_SPAWN);
     PushCreature(creature);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_SPAWN, 2);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_SPAWN, 2);
 }
 
 void TurtleLuaEngine::OnCreatureAdd(Creature* creature)
@@ -21056,7 +21121,7 @@ void TurtleLuaEngine::OnCreatureAdd(Creature* creature)
 
     lua_pushinteger(_state, CREATURE_EVENT_ON_ADD);
     PushCreature(creature);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_ADD, 2);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_ADD, 2);
 }
 
 void TurtleLuaEngine::OnCreatureRemove(Creature* creature)
@@ -21068,7 +21133,7 @@ void TurtleLuaEngine::OnCreatureRemove(Creature* creature)
 
     lua_pushinteger(_state, CREATURE_EVENT_ON_REMOVE);
     PushCreature(creature);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_REMOVE, 2);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_REMOVE, 2);
 }
 
 bool TurtleLuaEngine::OnCreatureReachWP(Creature* creature, uint32 type, uint32 id)
@@ -21078,17 +21143,13 @@ bool TurtleLuaEngine::OnCreatureReachWP(Creature* creature, uint32 type, uint32 
     if (!IsEnabled() || !creature)
         return false;
 
-    auto entryItr = _creatureEvents.find(creature->GetEntry());
-    if (entryItr == _creatureEvents.end())
-        return false;
-
-    auto eventItr = entryItr->second.find(CREATURE_EVENT_ON_REACH_WP);
-    if (eventItr == entryItr->second.end())
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, CREATURE_EVENT_ON_REACH_WP);
+    if (functionRefs.empty())
         return false;
 
     bool stopNormalAction = false;
 
-    for (int functionRef : eventItr->second)
+    for (int functionRef : functionRefs)
     {
         int before = lua_gettop(_state);
         lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
@@ -21130,7 +21191,7 @@ void TurtleLuaEngine::OnCreatureReset(Creature* creature)
 
     lua_pushinteger(_state, CREATURE_EVENT_ON_RESET);
     PushCreature(creature);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_RESET, 2);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_RESET, 2);
 }
 
 bool TurtleLuaEngine::OnCreatureReachHome(Creature* creature)
@@ -21140,17 +21201,13 @@ bool TurtleLuaEngine::OnCreatureReachHome(Creature* creature)
     if (!IsEnabled() || !creature)
         return false;
 
-    auto entryItr = _creatureEvents.find(creature->GetEntry());
-    if (entryItr == _creatureEvents.end())
-        return false;
-
-    auto eventItr = entryItr->second.find(CREATURE_EVENT_ON_REACH_HOME);
-    if (eventItr == entryItr->second.end())
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, CREATURE_EVENT_ON_REACH_HOME);
+    if (functionRefs.empty())
         return false;
 
     bool stopNormalAction = false;
 
-    for (int functionRef : eventItr->second)
+    for (int functionRef : functionRefs)
     {
         int before = lua_gettop(_state);
         lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
@@ -21191,7 +21248,7 @@ void TurtleLuaEngine::OnCreatureAIUpdate(Creature* creature, uint32 diff)
     lua_pushinteger(_state, CREATURE_EVENT_ON_AIUPDATE);
     PushCreature(creature);
     lua_pushinteger(_state, diff);
-    CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_AIUPDATE, 3);
+    CallCreatureEvent(creature, CREATURE_EVENT_ON_AIUPDATE, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureDamageTaken(Creature* creature, Unit* attacker, uint32& damage)
@@ -21201,17 +21258,13 @@ bool TurtleLuaEngine::OnCreatureDamageTaken(Creature* creature, Unit* attacker, 
     if (!IsEnabled() || !creature)
         return false;
 
-    auto entryItr = _creatureEvents.find(creature->GetEntry());
-    if (entryItr == _creatureEvents.end())
-        return false;
-
-    auto eventItr = entryItr->second.find(CREATURE_EVENT_ON_DAMAGE_TAKEN);
-    if (eventItr == entryItr->second.end())
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, CREATURE_EVENT_ON_DAMAGE_TAKEN);
+    if (functionRefs.empty())
         return false;
 
     bool stopNormalAction = false;
 
-    for (int functionRef : eventItr->second)
+    for (int functionRef : functionRefs)
     {
         int before = lua_gettop(_state);
         lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
@@ -21263,7 +21316,7 @@ bool TurtleLuaEngine::OnCreatureOwnerAttacked(Creature* creature, Unit* target)
     lua_pushinteger(_state, CREATURE_EVENT_ON_OWNER_ATTACKED);
     PushCreature(creature);
     PushUnit(target);
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_OWNER_ATTACKED, 3);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_OWNER_ATTACKED, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureOwnerAttackedAt(Creature* creature, Unit* attacker)
@@ -21276,7 +21329,7 @@ bool TurtleLuaEngine::OnCreatureOwnerAttackedAt(Creature* creature, Unit* attack
     lua_pushinteger(_state, CREATURE_EVENT_ON_OWNER_ATTACKED_AT);
     PushCreature(creature);
     PushUnit(attacker);
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_OWNER_ATTACKED_AT, 3);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_OWNER_ATTACKED_AT, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureHitBySpell(Creature* creature, WorldObject* caster, uint32 spellId)
@@ -21296,7 +21349,7 @@ bool TurtleLuaEngine::OnCreatureHitBySpell(Creature* creature, WorldObject* cast
         lua_pushnil(_state);
     lua_pushinteger(_state, spellId);
 
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_HIT_BY_SPELL, 4);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_HIT_BY_SPELL, 4);
 }
 
 bool TurtleLuaEngine::OnCreatureSpellHitTarget(Creature* creature, Unit* target, uint32 spellId)
@@ -21306,17 +21359,13 @@ bool TurtleLuaEngine::OnCreatureSpellHitTarget(Creature* creature, Unit* target,
     if (!IsEnabled() || !creature)
         return false;
 
-    auto entryItr = _creatureEvents.find(creature->GetEntry());
-    if (entryItr == _creatureEvents.end())
-        return false;
-
-    auto eventItr = entryItr->second.find(CREATURE_EVENT_ON_SPELL_HIT_TARGET);
-    if (eventItr == entryItr->second.end())
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, CREATURE_EVENT_ON_SPELL_HIT_TARGET);
+    if (functionRefs.empty())
         return false;
 
     bool stopNormalAction = false;
 
-    for (int functionRef : eventItr->second)
+    for (int functionRef : functionRefs)
     {
         int before = lua_gettop(_state);
         lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
@@ -21359,7 +21408,7 @@ bool TurtleLuaEngine::OnCreatureJustSummoned(Creature* creature, Creature* summo
     lua_pushinteger(_state, CREATURE_EVENT_ON_JUST_SUMMONED_CREATURE);
     PushCreature(creature);
     PushCreature(summon);
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_JUST_SUMMONED_CREATURE, 3);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_JUST_SUMMONED_CREATURE, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureSummonedCreatureDespawn(Creature* creature, Creature* summon)
@@ -21372,7 +21421,7 @@ bool TurtleLuaEngine::OnCreatureSummonedCreatureDespawn(Creature* creature, Crea
     lua_pushinteger(_state, CREATURE_EVENT_ON_SUMMONED_CREATURE_DESPAWN);
     PushCreature(creature);
     PushCreature(summon);
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_SUMMONED_CREATURE_DESPAWN, 3);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_SUMMONED_CREATURE_DESPAWN, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureMoveInLOS(Creature* creature, Unit* who)
@@ -21385,7 +21434,7 @@ bool TurtleLuaEngine::OnCreatureMoveInLOS(Creature* creature, Unit* who)
     lua_pushinteger(_state, CREATURE_EVENT_ON_MOVE_IN_LOS);
     PushCreature(creature);
     PushUnit(who);
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_MOVE_IN_LOS, 3);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_MOVE_IN_LOS, 3);
 }
 
 bool TurtleLuaEngine::OnCreatureReceiveEmote(Creature* creature, Player* player, uint32 emoteId)
@@ -21400,7 +21449,7 @@ bool TurtleLuaEngine::OnCreatureReceiveEmote(Creature* creature, Player* player,
     PushPlayer(player);
     lua_pushinteger(_state, emoteId);
 
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_RECEIVE_EMOTE, 4);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_RECEIVE_EMOTE, 4);
 }
 
 bool TurtleLuaEngine::OnCreatureCorpseRemoved(Creature* creature, uint32& respawnDelay)
@@ -21410,17 +21459,13 @@ bool TurtleLuaEngine::OnCreatureCorpseRemoved(Creature* creature, uint32& respaw
     if (!IsEnabled() || !creature)
         return false;
 
-    auto entryItr = _creatureEvents.find(creature->GetEntry());
-    if (entryItr == _creatureEvents.end())
-        return false;
-
-    auto eventItr = entryItr->second.find(CREATURE_EVENT_ON_CORPSE_REMOVED);
-    if (eventItr == entryItr->second.end())
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, CREATURE_EVENT_ON_CORPSE_REMOVED);
+    if (functionRefs.empty())
         return false;
 
     bool stopNormalAction = false;
 
-    for (int functionRef : eventItr->second)
+    for (int functionRef : functionRefs)
     {
         int before = lua_gettop(_state);
         lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
@@ -21479,7 +21524,78 @@ bool TurtleLuaEngine::OnCreatureDummyEffect(WorldObject* caster, uint32 spellId,
     lua_pushinteger(_state, effIndex);
     PushCreature(target);
 
-    return CallEntryEvent(_creatureEvents, target->GetEntry(), CREATURE_EVENT_ON_DUMMY_EFFECT, 5);
+    return CallCreatureEvent(target, CREATURE_EVENT_ON_DUMMY_EFFECT, 5);
+}
+
+std::vector<int> TurtleLuaEngine::CollectCreatureEventRefs(Creature* creature, uint32 eventId)
+{
+    std::vector<int> refs;
+    if (!creature)
+        return refs;
+
+    auto entryItr = _creatureEvents.find(creature->GetEntry());
+    if (entryItr != _creatureEvents.end())
+    {
+        auto eventItr = entryItr->second.find(eventId);
+        if (eventItr != entryItr->second.end())
+            refs.insert(refs.end(), eventItr->second.begin(), eventItr->second.end());
+    }
+
+    auto uniqueItr = _uniqueCreatureEvents.find(UniqueCreatureEventKey(creature->GetObjectGuid(), creature->GetInstanceId()));
+    if (uniqueItr != _uniqueCreatureEvents.end())
+    {
+        auto eventItr = uniqueItr->second.find(eventId);
+        if (eventItr != uniqueItr->second.end())
+            refs.insert(refs.end(), eventItr->second.begin(), eventItr->second.end());
+    }
+
+    return refs;
+}
+
+bool TurtleLuaEngine::CallCreatureEvent(Creature* creature, uint32 eventId, int argCount)
+{
+    int base = lua_gettop(_state) - argCount;
+    std::vector<int> functionRefs = CollectCreatureEventRefs(creature, eventId);
+    if (functionRefs.empty())
+    {
+        lua_settop(_state, base);
+        return false;
+    }
+
+    bool handled = true;
+
+    for (int functionRef : functionRefs)
+    {
+        lua_rawgeti(_state, LUA_REGISTRYINDEX, functionRef);
+        if (!lua_isfunction(_state, -1))
+        {
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        for (int i = 1; i <= argCount; ++i)
+            lua_pushvalue(_state, base + i);
+
+        if (lua_pcall(_state, argCount, LUA_MULTRET, 0) != LUA_OK)
+        {
+            LogError("creature event");
+            lua_pop(_state, 1);
+            continue;
+        }
+
+        int results = lua_gettop(_state) - base - argCount;
+        int firstResult = base + argCount + 1;
+        if (results >= 1 && lua_isboolean(_state, firstResult) && !lua_toboolean(_state, firstResult))
+            handled = false;
+
+        lua_settop(_state, base + argCount);
+
+        if (!handled)
+            break;
+    }
+
+    lua_settop(_state, base);
+    return handled;
 }
 
 bool TurtleLuaEngine::CallEntryEvent(std::map<uint32, std::map<uint32, std::vector<int>>>& store, uint32 entry, uint32 eventId, int argCount)
@@ -22024,7 +22140,7 @@ bool TurtleLuaEngine::OnCreatureQuestAccept(Player* player, Creature* creature, 
     PushCreature(creature);
     PushQuest(_state, quest);
 
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_QUEST_ACCEPT, 4);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_QUEST_ACCEPT, 4);
 }
 
 bool TurtleLuaEngine::OnCreatureQuestReward(Player* player, Creature* creature, Quest const* quest)
@@ -22039,7 +22155,7 @@ bool TurtleLuaEngine::OnCreatureQuestReward(Player* player, Creature* creature, 
     PushCreature(creature);
     PushQuest(_state, quest);
 
-    return CallEntryEvent(_creatureEvents, creature->GetEntry(), CREATURE_EVENT_ON_QUEST_REWARD, 4);
+    return CallCreatureEvent(creature, CREATURE_EVENT_ON_QUEST_REWARD, 4);
 }
 
 bool TurtleLuaEngine::OnGameObjectQuestAccept(Player* player, GameObject* go, Quest const* quest)

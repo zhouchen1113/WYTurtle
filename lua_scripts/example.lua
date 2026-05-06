@@ -739,6 +739,28 @@ end)
 --     print("GameObject spawned again: " .. gameobject:GetName())
 -- end)
 
+local uniqueCreatureBindings = {}
+RegisterPlayerEvent(18, function(event, player, message)
+    if message == "#luaunique" then
+        local creature = player:GetSelectedCreature()
+        if not creature then
+            player:SendBroadcastMessage("请先选中一个生物，再输入 #luaunique")
+            return false
+        end
+
+        local key = creature:GetGUID():ToString() .. ":" .. creature:GetInstanceId()
+        if not uniqueCreatureBindings[key] then
+            RegisterUniqueCreatureEvent(creature, creature:GetInstanceId(), 1, function(uniqueEvent, uniqueCreature, target)
+                uniqueCreature:Say("这个 Lua 事件只绑定到我这一个生物实例。", 0)
+            end)
+            uniqueCreatureBindings[key] = true
+        end
+
+        player:SendBroadcastMessage("已绑定唯一生物事件；让这个生物进入战斗即可看到效果。")
+        return false
+    end
+end)
+
 -- 示例：把 12345 替换成真实 NPC entry 后，可测试任务对象和 Gossip 菜单。
 RegisterCreatureEvent(12345, 31, function(event, player, creature, quest)
     player:SendBroadcastMessage("Lua quest accepted: " .. quest:GetTitle())

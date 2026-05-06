@@ -300,6 +300,7 @@ public:
     void RegisterGroupEvent(uint32 eventId, int functionRef);
     void RegisterGuildEvent(uint32 eventId, int functionRef);
     void RegisterCreatureEvent(uint32 entry, uint32 eventId, int functionRef);
+    void RegisterUniqueCreatureEvent(ObjectGuid const& guid, uint32 instanceId, uint32 eventId, int functionRef);
     void RegisterGameObjectEvent(uint32 entry, uint32 eventId, int functionRef);
     void RegisterItemEvent(uint32 entry, uint32 eventId, int functionRef);
     void RegisterSpellEvent(uint32 entry, uint32 eventId, int functionRef);
@@ -313,6 +314,7 @@ public:
     void ClearGroupEvents(uint32 eventId, bool allEvents);
     void ClearGuildEvents(uint32 eventId, bool allEvents);
     void ClearCreatureEvents(uint32 entry, uint32 eventId, bool allEvents);
+    void ClearUniqueCreatureEvents(ObjectGuid const& guid, uint32 instanceId, uint32 eventId, bool allEvents);
     void ClearGameObjectEvents(uint32 entry, uint32 eventId, bool allEvents);
     void ClearItemEvents(uint32 entry, uint32 eventId, bool allEvents);
     void ClearSpellEvents(uint32 entry, uint32 eventId, bool allEvents);
@@ -384,6 +386,22 @@ public:
     uint32 RemoveTimedEvents(bool allEvents);
 
 private:
+    struct UniqueCreatureEventKey
+    {
+        UniqueCreatureEventKey(ObjectGuid const& guid_, uint32 instanceId_) : guid(guid_), instanceId(instanceId_) {}
+
+        bool operator<(UniqueCreatureEventKey const& other) const
+        {
+            if (guid != other.guid)
+                return guid < other.guid;
+
+            return instanceId < other.instanceId;
+        }
+
+        ObjectGuid guid;
+        uint32 instanceId;
+    };
+
     struct TimedEvent
     {
         uint32 id;
@@ -441,6 +459,8 @@ private:
     bool CallPacketFunctionRefs(std::vector<int> const& functionRefs, uint32 eventId, WorldPacket& packet, Player* player, char const* context);
     void CallServerEvent(uint32 eventId);
     void CallServerEvent(uint32 eventId, uint32 arg);
+    std::vector<int> CollectCreatureEventRefs(Creature* creature, uint32 eventId);
+    bool CallCreatureEvent(Creature* creature, uint32 eventId, int argCount);
     bool CallEntryEvent(std::map<uint32, std::map<uint32, std::vector<int>>>& store, uint32 entry, uint32 eventId, int argCount);
     bool CallEntryEventForBoolean(std::map<uint32, std::map<uint32, std::vector<int>>>& store, uint32 entry, uint32 eventId, int argCount, bool expectedValue);
     void CallEntryEventIgnoreResult(std::map<uint32, std::map<uint32, std::vector<int>>>& store, uint32 entry, uint32 eventId, int argCount);
@@ -457,6 +477,7 @@ private:
     std::map<uint32, std::vector<int>> _groupEvents;
     std::map<uint32, std::vector<int>> _guildEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _creatureEvents;
+    std::map<UniqueCreatureEventKey, std::map<uint32, std::vector<int>>> _uniqueCreatureEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _gameObjectEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _itemEvents;
     std::map<uint32, std::map<uint32, std::vector<int>>> _spellEvents;

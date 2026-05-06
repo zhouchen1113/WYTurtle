@@ -77,6 +77,7 @@ E:\TurtleBY
 - 全局 DBC 查询函数补充：新增 `LookupEntry`，当前支持 `Spell` / `SpellEntry` 查询并返回 `SpellInfo` 对象；`GemProperties` 在 Turtle 1.12 中没有对应 DBC，作为兼容名称查询不到时返回空。
 - 全局 Group/Guild 事件补充：新增 `RegisterGroupEvent`、`RegisterGuildEvent`、`ClearGroupEvents`、`ClearGuildEvents`，并在 `Group.cpp` / `Guild.cpp` 接入真实触发点。
 - 全局玩家 Gossip 事件补充：新增 `RegisterPlayerGossipEvent`、`ClearPlayerGossipEvents`，并在客户端选择玩家自身 Gossip 菜单项时回调 Lua。
+- 全局唯一 Creature 事件补充：新增 `RegisterUniqueCreatureEvent`、`ClearUniqueCreatureEvents`，按 `ObjectGuid + instanceId + eventId` 绑定单个已经刷出的生物；它和 `RegisterCreatureEvent` 共用现有 Creature 事件触发点，同一事件会先执行 entry 绑定，再执行唯一生物绑定。当前沿用本兼容层现有事件注册语义，不返回取消函数，`shots` 参数暂未实现。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -120,6 +121,7 @@ RegisterGroupEvent(eventId, function)
 RegisterGuildEvent(eventId, function)
 RegisterPacketEvent(opcode, eventId, function[, shots])
 RegisterCreatureEvent(entry, eventId, function)
+RegisterUniqueCreatureEvent(guidOrCreature, instanceId, eventId, function[, shots])
 RegisterGameObjectEvent(entry, eventId, function)
 RegisterItemEvent(entry, eventId, function)
 RegisterSpellEvent(spellId, eventId, function)
@@ -133,6 +135,7 @@ ClearGroupEvents([eventId])
 ClearGuildEvents([eventId])
 ClearPacketEvents(opcode, [eventId])
 ClearCreatureEvents(entry, [eventId])
+ClearUniqueCreatureEvents(guidOrCreature, instanceId, [eventId])
 ClearGameObjectEvents(entry, [eventId])
 ClearItemEvents(entry, [eventId])
 ClearSpellEvents(spellId, [eventId])
@@ -349,6 +352,7 @@ HIGHGUID_MO_TRANSPORT
 - `ClearServerEvents()` 清理所有服务端事件；传入 `eventId` 时只清理指定服务端事件。
 - `ClearPacketEvents(opcode)` 清理指定 opcode 的所有包事件；传入 `eventId` 时只清理该 opcode 的指定包事件。
 - `ClearCreatureEvents(entry)` 清理该生物模板的所有 Creature 事件；传入 `eventId` 时只清理该模板的指定事件。
+- `ClearUniqueCreatureEvents(guidOrCreature, instanceId)` 清理指定生物实例的所有 Creature 事件；传入 `eventId` 时只清理这个生物实例的指定事件。`guidOrCreature` 可以传 `Creature` 对象或 `ObjectGuid`；`instanceId` 要和目标所在地图实例一致，普通大陆通常是 `0`。
 - `ClearGameObjectEvents(entry)`、`ClearItemEvents(entry)` 逻辑相同，分别清理指定物体或物品模板事件。
 - `ClearSpellEvents(spellId)` 清理指定法术 ID 的动态施法事件；传入 `eventId` 时只清理指定事件。
 - `ClearCreatureGossipEvents(entry)`、`ClearGameObjectGossipEvents(entry)`、`ClearItemGossipEvents(entry)` 清理指定模板的 Gossip 事件。
@@ -2450,6 +2454,7 @@ end
 - 玩家创建、删除、登录、登出、施法、击杀、被 Creature 击杀、决斗、经验/金币/声望变化、天赋变化、等级变化、聊天、命令、文字表情、保存、副本绑定、Zone/Area/地图变化、队伍掷骰获物、战场逃亡事件。
 - 服务端启动、关闭、Update 事件。
 - NPC 战斗、死亡、重生、AI Update。
+- 按模板 entry 绑定的 Creature 事件，以及按 `ObjectGuid + instanceId` 绑定的唯一 Creature 事件。
 - Creature / GameObject / Item 的任务、Gossip、使用入口。
 - Item DummyEffect、Expire、Remove 事件。
 - 动态 `Spell` 对象和 Prepare / Cast / Cancel 施法事件。
