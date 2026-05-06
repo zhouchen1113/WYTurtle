@@ -70,6 +70,7 @@ E:\TurtleBY
 - DynamicObject 基础对象封装：地图按 GUID 反查和通用 `WorldObject` 返回路径现在可以返回 `DynamicObject` 对象；脚本可读取施法者、施法者 GUID、法术 ID、效果索引、持续时间、半径和动态对象类型，也可调用 `Delay()` / `Delete()`。
 - ElunaQuery 数据库结果对象：`WorldDBQuery` / `CharDBQuery` / `AuthDBQuery` 等现在返回 `ElunaQuery` 对象，支持 3.3.5 Eluna 风格的 `GetUInt32(0)`、`GetString(0)`、`NextRow()`、`GetRow()` 等对象方法；列下标按 Eluna 从 `0` 开始。
 - 全局兼容函数补齐：新增核心信息、Lua 状态信息、bit 位运算、毫秒时间、背包位置判断、日志打印、全局命令执行和全局定时事件清理入口。`GetCoreExpansion()` 按 Turtle 1.12 返回 `0`，`GetStateMap()` / `GetStateMapId()` / `GetStateInstanceId()` 按当前单 Lua 状态返回 `nil` / `-1` / `0`，`IsCompatibilityMode()` 返回 `true`。
+- 全局工具/管理函数补充：新增 `CreateLongLong`、`CreateULongLong`、`GetItemLink`、`GetAreaName`、`GetGuildByLeaderGUID`、`Kick`、`Ban`、`SaveAllPlayers`、`AddVendorItem`、`VendorRemoveItem`、`VendorRemoveAllItems`。其中 `Ban()` 调用 Turtle 当前异步封禁流程，合法请求会先返回 `3` 表示已进入处理队列；`AddVendorItem` 的第 5 个参数在 Turtle 1.12 中按 `itemflags` 使用，不是 3.3.5 的 extended cost。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
 
@@ -142,6 +143,8 @@ bit_lshift(a, b)
 bit_rshift(a, b)
 bit_xor(a, b)
 bit_not(a)
+CreateLongLong([value])
+CreateULongLong([value])
 GetCurrTime()
 GetTimeDiff(oldTime)
 IsInventoryPos(bag, slot)
@@ -153,6 +156,9 @@ RemoveEventById(eventId)
 RemoveEvents([allEvents])
 ReloadEluna()
 RunCommand(command)
+Kick(player)
+Ban(mode, nameOrIP, durationSeconds[, reason[, author]])
+SaveAllPlayers()
 GetPlayerByName(name)
 GetPlayerByGUID(guidOrGuidLow)
 GetPlayerByGUIDLow(guidLow)
@@ -175,6 +181,8 @@ GetGameTime()
 GetQuest(questId)
 GetItemTemplate(itemId)
 GetItemPrototype(itemId)
+GetItemLink(itemId[, locale])
+GetAreaName(areaOrZoneId[, locale])
 GetCreatureTemplate(entry)
 GetCreatureInfo(entry)
 GetGameObjectTemplate(entry)
@@ -185,9 +193,13 @@ GetSpellInfo(spellId)
 GetSpellEntry(spellId)
 GetGuildById(guildId)
 GetGuildByName(name)
+GetGuildByLeaderGUID(guid)
 GetPlayersInWorld()
 GetPlayerCount()
 GetMapById(mapId, instanceId)
+AddVendorItem(creatureEntry, itemEntry[, maxCount[, incrTime[, itemFlags]]])
+VendorRemoveItem(creatureEntry, itemEntry)
+VendorRemoveAllItems(creatureEntry)
 WorldDBQuery(sql)
 CharDBQuery(sql)
 CharacterDBQuery(sql)
@@ -210,8 +222,16 @@ print(...)
 - `repeats = 0` 表示无限重复。
 - `RemoveEvents(false)` 只清理全局 `CreateLuaEvent` 创建的定时事件；`RemoveEvents(true)` 会连同对象绑定事件一起清理。
 - `RunCommand(command)` 按控制台权限把 GM 命令加入世界线程队列执行，命令前面的 `.` / `!` 可以带也可以不带。
+- `Kick(player)` 会断开指定玩家当前会话。
+- `Ban(mode, nameOrIP, durationSeconds[, reason[, author]])` 中 `mode` 为 `0` 账号、`1` 角色、`2` IP；Turtle 的封禁流程是异步查询账号/角色后再落库，所以合法请求通常先返回 `3`。
+- `SaveAllPlayers()` 会保存当前所有在线玩家。
 - `GetLuaEngine()` 为兼容旧 Eluna 脚本返回 `ElunaEngine`；`GetCoreName()` 返回 `Turtle WoW`；`GetCoreExpansion()` 在 Turtle 1.12 下返回 `0`。
 - `GetCurrTime()` 返回服务器毫秒计时，`GetTimeDiff(oldTime)` 返回 `oldTime` 到当前的毫秒差。
+- `CreateLongLong()` / `CreateULongLong()` 当前按 Lua 数值返回，能兼容常见数字/字符串入参；超过 Lua 数值安全范围的超大 `uint64` 后续还需要更完整的 userdata 包装。
+- `GetItemLink(itemId[, locale])` 会生成可点击物品链接；`locale` 使用 Turtle 的 `LocaleConstant`。
+- `GetAreaName(areaOrZoneId[, locale])` 从 `area_template` / 区域本地化表取名称，找不到会按 Eluna 风格报参数错误。
+- `GetGuildByLeaderGUID(guid)` 支持传 `ObjectGuid`，也兼容传玩家低位 GUID 数字。
+- `AddVendorItem` / `VendorRemoveItem` / `VendorRemoveAllItems` 会同步更新内存商人列表和 `npc_vendor` 表；Turtle 1.12 没有 3.3.5 extended cost 字段，第 5 个参数当前映射为 `itemflags`。
 - `PrintInfo` / `PrintError` / `PrintDebug` 分别写入 info、error、debug 日志；`print(...)` 仍写普通 Lua 日志。
 - `GetPlayersInWorld()` 返回当前在线且在世界中的玩家对象数组。
 - `GetPlayerCount()` 返回当前在线且在世界中的玩家数量。

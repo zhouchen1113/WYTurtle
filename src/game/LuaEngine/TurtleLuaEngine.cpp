@@ -7,6 +7,7 @@
 #include "AI/CreatureAI.h"
 #include "Config/Config.h"
 #include "Database/DatabaseEnv.h"
+#include "Database/SQLStorages.h"
 #include "GossipDef.h"
 #include "Group.h"
 #include "Guild.h"
@@ -39,6 +40,7 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "Util.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -1327,6 +1329,40 @@ int LuaBitNot(lua_State* state)
     return 1;
 }
 
+int LuaCreateLongLong(lua_State* state)
+{
+    long long value = 0;
+    if (lua_isstring(state, 1))
+    {
+        std::istringstream stream(luaL_checkstring(state, 1));
+        stream >> value;
+        if (stream.fail())
+            return luaL_argerror(state, 1, "long long string could not be converted");
+    }
+    else if (!lua_isnoneornil(state, 1))
+        value = static_cast<long long>(luaL_checkinteger(state, 1));
+
+    lua_pushinteger(state, static_cast<lua_Integer>(value));
+    return 1;
+}
+
+int LuaCreateULongLong(lua_State* state)
+{
+    unsigned long long value = 0;
+    if (lua_isstring(state, 1))
+    {
+        std::istringstream stream(luaL_checkstring(state, 1));
+        stream >> value;
+        if (stream.fail())
+            return luaL_argerror(state, 1, "unsigned long long string could not be converted");
+    }
+    else if (!lua_isnoneornil(state, 1))
+        value = static_cast<unsigned long long>(luaL_checkinteger(state, 1));
+
+    lua_pushinteger(state, static_cast<lua_Integer>(value));
+    return 1;
+}
+
 int LuaGetCurrTime(lua_State* state)
 {
     lua_pushinteger(state, WorldTimer::getMSTime());
@@ -1404,6 +1440,69 @@ int LuaRunCommand(lua_State* state)
         sWorld.QueueCliCommand(new CliCommandHolder(0, SEC_CONSOLE, nullptr, command.c_str(), &LuaCommandPrint, &LuaCommandFinished));
     }
 
+    return 0;
+}
+
+int LuaKick(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    if (player && player->GetSession())
+        player->GetSession()->KickPlayer();
+    return 0;
+}
+
+int LuaBan(lua_State* state)
+{
+    int banMode = static_cast<int>(luaL_checkinteger(state, 1));
+    std::string nameOrIP = luaL_checkstring(state, 2);
+    uint32 duration = static_cast<uint32>(luaL_checkinteger(state, 3));
+    std::string reason = luaL_optstring(state, 4, "");
+    std::string author = luaL_optstring(state, 5, "");
+
+    switch (banMode)
+    {
+        case BAN_ACCOUNT:
+            if (!AccountMgr::normalizeString(nameOrIP))
+                return luaL_argerror(state, 2, "invalid account name");
+            break;
+        case BAN_CHARACTER:
+            if (!normalizePlayerName(nameOrIP))
+                return luaL_argerror(state, 2, "invalid character name");
+            break;
+        case BAN_IP:
+            if (!IsIPAddress(nameOrIP.c_str()))
+                return luaL_argerror(state, 2, "invalid ip");
+            break;
+        default:
+            return luaL_argerror(state, 1, "unknown ban mode");
+    }
+
+    BanReturn result = sWorld.BanAccount(static_cast<BanMode>(banMode), nameOrIP, duration, reason, author);
+    switch (result)
+    {
+        case BAN_SUCCESS:
+            lua_pushinteger(state, 0);
+            break;
+        case BAN_SYNTAX_ERROR:
+            lua_pushinteger(state, 1);
+            break;
+        case BAN_NOTFOUND:
+            lua_pushinteger(state, 2);
+            break;
+        case BAN_INPROGRESS:
+            lua_pushinteger(state, 3);
+            break;
+        default:
+            lua_pushnil(state);
+            break;
+    }
+
+    return 1;
+}
+
+int LuaSaveAllPlayers(lua_State* /*state*/)
+{
+    sObjectAccessor.SaveAllPlayers();
     return 0;
 }
 
@@ -2487,6 +2586,59 @@ int LuaGetItemTemplate(lua_State* state)
     return 1;
 }
 
+int LuaGetItemLink(lua_State* state)
+{
+    uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 locale = static_cast<uint32>(luaL_optinteger(state, 2, LOCALE_enUS));
+    if (locale >= MAX_LOCALE)
+        return luaL_argerror(state, 2, "valid LocaleConstant expected");
+
+    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(entry);
+    if (!proto)
+        return luaL_argerror(state, 1, "valid item entry expected");
+
+    std::string name = proto->Name1;
+    if (locale != LOCALE_enUS)
+    {
+        if (ItemLocale const* itemLocale = sObjectMgr.GetItemLocale(entry))
+        {
+            int localeIndex = sObjectMgr.GetIndexForLocale(static_cast<LocaleConstant>(locale));
+            if (localeIndex >= 0 && itemLocale->Name.size() > static_cast<size_t>(localeIndex) && !itemLocale->Name[localeIndex].empty())
+                name = itemLocale->Name[localeIndex];
+        }
+    }
+
+    uint32 quality = proto->Quality < MAX_ITEM_QUALITY ? proto->Quality : ITEM_QUALITY_NORMAL;
+    uint32 color = ItemQualityColors[quality];
+
+    std::ostringstream link;
+    link << "|c" << std::hex << std::nouppercase << color
+        << "|Hitem:" << std::dec << entry
+        << ":0:0:0:0:0:0:0|h[" << name << "]|h|r";
+    std::string text = link.str();
+    lua_pushlstring(state, text.c_str(), text.size());
+    return 1;
+}
+
+int LuaGetAreaName(lua_State* state)
+{
+    uint32 areaId = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 locale = static_cast<uint32>(luaL_optinteger(state, 2, LOCALE_enUS));
+    if (locale >= MAX_LOCALE)
+        return luaL_argerror(state, 2, "valid LocaleConstant expected");
+
+    AreaEntry const* area = AreaEntry::GetById(areaId);
+    if (!area)
+        return luaL_argerror(state, 1, "valid area or zone id expected");
+
+    std::string name = area->Name ? area->Name : "";
+    if (locale != LOCALE_enUS)
+        sObjectMgr.GetAreaLocaleString(areaId, sObjectMgr.GetIndexForLocale(static_cast<LocaleConstant>(locale)), &name);
+
+    lua_pushlstring(state, name.c_str(), name.size());
+    return 1;
+}
+
 int LuaGetCreatureTemplate(lua_State* state)
 {
     uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
@@ -2530,6 +2682,62 @@ int LuaGetGuildByName(lua_State* state)
     else
         lua_pushnil(state);
     return 1;
+}
+
+int LuaGetGuildByLeaderGUID(lua_State* state)
+{
+    auto* engine = GetEngine(state);
+    ObjectGuid guid = CheckObjectGuidValue(state, 1);
+    Guild* guild = sGuildMgr.GetGuildByLeader(guid);
+    if (engine)
+        engine->PushGuild(guild);
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int LuaAddVendorItem(lua_State* state)
+{
+    uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 item = static_cast<uint32>(luaL_checkinteger(state, 2));
+    uint32 maxCount = static_cast<uint32>(luaL_optinteger(state, 3, 0));
+    uint32 incrTime = static_cast<uint32>(luaL_optinteger(state, 4, 0));
+    uint32 itemFlags = static_cast<uint32>(luaL_optinteger(state, 5, 0));
+
+    if (sObjectMgr.IsVendorItemValid(false, "lua_vendor", entry, item, maxCount, incrTime, 0))
+        sObjectMgr.AddVendorItem(entry, item, maxCount, incrTime, itemFlags);
+
+    return 0;
+}
+
+int LuaVendorRemoveItem(lua_State* state)
+{
+    uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
+    uint32 item = static_cast<uint32>(luaL_checkinteger(state, 2));
+    if (!sObjectMgr.GetCreatureTemplate(entry))
+        return luaL_argerror(state, 1, "valid creature entry expected");
+
+    sObjectMgr.RemoveVendorItem(entry, item);
+    return 0;
+}
+
+int LuaVendorRemoveAllItems(lua_State* state)
+{
+    uint32 entry = static_cast<uint32>(luaL_checkinteger(state, 1));
+    VendorItemData const* items = sObjectMgr.GetNpcVendorItemList(entry);
+    if (!items || items->Empty())
+        return 0;
+
+    std::vector<uint32> entries;
+    entries.reserve(items->m_items.size());
+    for (VendorItem const* vendorItem : items->m_items)
+        if (vendorItem)
+            entries.push_back(vendorItem->item);
+
+    for (uint32 item : entries)
+        sObjectMgr.RemoveVendorItem(entry, item);
+
+    return 0;
 }
 
 int LuaGetPlayersInWorld(lua_State* state)
@@ -14975,6 +15183,8 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "bit_rshift", &LuaBitRShift);
     lua_register(_state, "bit_xor", &LuaBitXor);
     lua_register(_state, "bit_not", &LuaBitNot);
+    lua_register(_state, "CreateLongLong", &LuaCreateLongLong);
+    lua_register(_state, "CreateULongLong", &LuaCreateULongLong);
     lua_register(_state, "GetCurrTime", &LuaGetCurrTime);
     lua_register(_state, "GetTimeDiff", &LuaGetTimeDiff);
     lua_register(_state, "IsInventoryPos", &LuaIsInventoryPos);
@@ -14986,6 +15196,9 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "RemoveEvents", &LuaRemoveEvents);
     lua_register(_state, "ReloadEluna", &LuaReloadEluna);
     lua_register(_state, "RunCommand", &LuaRunCommand);
+    lua_register(_state, "Kick", &LuaKick);
+    lua_register(_state, "Ban", &LuaBan);
+    lua_register(_state, "SaveAllPlayers", &LuaSaveAllPlayers);
     lua_register(_state, "GetPlayerByName", &LuaGetPlayerByName);
     lua_register(_state, "GetPlayerByGUID", &LuaGetPlayerByGUID);
     lua_register(_state, "GetPlayerByGUIDLow", &LuaGetPlayerByGUIDLow);
@@ -15007,6 +15220,8 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "GetQuest", &LuaGetQuest);
     lua_register(_state, "GetItemTemplate", &LuaGetItemTemplate);
     lua_register(_state, "GetItemPrototype", &LuaGetItemTemplate);
+    lua_register(_state, "GetItemLink", &LuaGetItemLink);
+    lua_register(_state, "GetAreaName", &LuaGetAreaName);
     lua_register(_state, "GetCreatureTemplate", &LuaGetCreatureTemplate);
     lua_register(_state, "GetCreatureInfo", &LuaGetCreatureTemplate);
     lua_register(_state, "GetGameObjectTemplate", &LuaGetGameObjectTemplate);
@@ -15017,9 +15232,13 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "GetSpellEntry", &LuaGetSpellInfo);
     lua_register(_state, "GetGuildById", &LuaGetGuildById);
     lua_register(_state, "GetGuildByName", &LuaGetGuildByName);
+    lua_register(_state, "GetGuildByLeaderGUID", &LuaGetGuildByLeaderGUID);
     lua_register(_state, "GetPlayersInWorld", &LuaGetPlayersInWorld);
     lua_register(_state, "GetPlayerCount", &LuaGetPlayerCount);
     lua_register(_state, "GetMapById", &LuaGetMapById);
+    lua_register(_state, "AddVendorItem", &LuaAddVendorItem);
+    lua_register(_state, "VendorRemoveItem", &LuaVendorRemoveItem);
+    lua_register(_state, "VendorRemoveAllItems", &LuaVendorRemoveAllItems);
     lua_register(_state, "WorldDBQuery", &LuaWorldDBQuery);
     lua_register(_state, "CharDBQuery", &LuaCharDBQuery);
     lua_register(_state, "CharacterDBQuery", &LuaCharDBQuery);
