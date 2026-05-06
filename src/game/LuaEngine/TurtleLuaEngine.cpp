@@ -455,6 +455,8 @@ public:
 std::vector<std::unique_ptr<TaxiPathEntry>> g_luaTaxiPaths;
 std::vector<std::unique_ptr<TaxiPathNodeEntry>> g_luaTaxiPathNodes;
 
+bool HasLuaArgument(lua_State* state, int arg);
+
 void UnrefFunctionRefs(lua_State* state, std::vector<int>& refs)
 {
     if (state)
@@ -3150,7 +3152,7 @@ int ChannelIsOn(lua_State* state)
 {
     Channel* channel = ResolveChannel(CheckChannel(state, 1));
     ObjectGuid guid = CheckObjectGuidValue(state, 2);
-    lua_pushboolean(state, channel && channel->IsOn(guid));
+    lua_pushboolean(state, channel && channel->LuaIsOn(guid));
     return 1;
 }
 
@@ -3158,7 +3160,7 @@ int ChannelIsBanned(lua_State* state)
 {
     Channel* channel = ResolveChannel(CheckChannel(state, 1));
     ObjectGuid guid = CheckObjectGuidValue(state, 2);
-    lua_pushboolean(state, channel && channel->IsBanned(guid));
+    lua_pushboolean(state, channel && channel->LuaIsBanned(guid));
     return 1;
 }
 
@@ -3166,7 +3168,7 @@ int ChannelGetPlayerFlags(lua_State* state)
 {
     Channel* channel = ResolveChannel(CheckChannel(state, 1));
     ObjectGuid guid = CheckObjectGuidValue(state, 2);
-    lua_pushinteger(state, channel ? channel->GetPlayerFlags(guid) : 0);
+    lua_pushinteger(state, channel ? channel->LuaGetPlayerFlags(guid) : 0);
     return 1;
 }
 
@@ -3175,8 +3177,8 @@ int ChannelSetModerator(lua_State* state)
     Channel* channel = ResolveChannel(CheckChannel(state, 1));
     ObjectGuid guid = CheckObjectGuidValue(state, 2);
     bool set = lua_toboolean(state, 3) != 0;
-    if (channel && channel->IsOn(guid))
-        channel->SetModerator(guid, set);
+    if (channel)
+        channel->LuaSetModerator(guid, set);
     return 0;
 }
 
@@ -3185,8 +3187,8 @@ int ChannelSetMute(lua_State* state)
     Channel* channel = ResolveChannel(CheckChannel(state, 1));
     ObjectGuid guid = CheckObjectGuidValue(state, 2);
     bool set = lua_toboolean(state, 3) != 0;
-    if (channel && channel->IsOn(guid))
-        channel->SetMute(guid, set);
+    if (channel)
+        channel->LuaSetMute(guid, set);
     return 0;
 }
 
@@ -3199,7 +3201,7 @@ int ChannelSendPacket(lua_State* state)
         ignored = CheckObjectGuidValue(state, 3);
 
     if (channel && packet)
-        channel->SendToAll(packet, ignored);
+        channel->LuaSendToAll(packet, ignored);
     return 0;
 }
 
@@ -3209,7 +3211,7 @@ int ChannelSendToOne(lua_State* state)
     WorldPacket* packet = CheckWorldPacket(state, 2);
     ObjectGuid receiver = CheckObjectGuidValue(state, 3);
     if (channel && packet)
-        channel->SendToOne(packet, receiver);
+        channel->LuaSendToOne(packet, receiver);
     return 0;
 }
 
@@ -21152,7 +21154,7 @@ bool TurtleLuaEngine::CallPacketFunctionRefs(std::vector<int> const& functionRef
         if (auto* holder = static_cast<LuaWorldPacket*>(luaL_testudata(_state, -1, WORLDPACKET_METATABLE)))
         {
             if (holder->packet)
-                packet = *holder->packet;
+                packet = WorldPacket(*holder->packet);
         }
 
         lua_pop(_state, 2);

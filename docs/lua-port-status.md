@@ -29,7 +29,27 @@ E:\TurtleBY
 
 ## 编译状态
 
-当前状态：上一次已经通过 Release 编译；按当前要求，本轮后续新增函数暂不做中途完整编译，等 Lua 功能补齐后再统一编译和安装验证。
+当前状态：2026-05-06 已完成 Release 最终编译和安装验证。
+
+已通过的命令：
+
+```text
+cmake --build E:\GIT\WYTurtle\build_vs2022 --config Release --target INSTALL
+```
+
+安装输出目录仍为：
+
+```text
+E:\TurtleBY
+```
+
+本次已把运行文件同步到测试服目录：
+
+```text
+E:\WYwg1.0\server
+```
+
+测试服已用可见窗口启动，`realmd` 监听 `3724`，`mangosd` 按当前配置监听 `8090`。
 
 最近新增并验证：
 
@@ -2754,7 +2774,7 @@ end)
 测试方法：
 
 1. 确认 `mangosd.conf` 中启用了 `Eluna.Enabled = 1`。
-2. 把 Lua 文件放进 `E:\TurtleBY\lua_scripts`。
+2. 把 Lua 文件放进 `E:\WYwg1.0\server\lua_scripts`。
 3. 启动 `mangosd.exe`。
 4. 登录游戏并输入 `#lua`。
 
