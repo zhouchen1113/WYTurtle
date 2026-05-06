@@ -93,6 +93,7 @@ E:\TurtleBY
 - 全局 Map/Instance 副本事件补充：新增 `RegisterMapEvent`、`RegisterInstanceEvent`、`ClearMapEvents`、`ClearInstanceEvents`。`RegisterMapEvent(mapId, eventId, function)` 按地图 ID 绑定该地图所有副本实例；`RegisterInstanceEvent(instanceId, eventId, function)` 按运行时实例 ID 绑定单个实例。同一副本事件会先执行 mapId 绑定，再执行 instanceId 绑定。当前已触发事件 `1` 初始化、`2` 加载、`3` 更新、`4` 玩家进入、`5` Creature 创建、`6` GameObject 创建；事件 `7` 检查战斗进度还没有统一安全触发点，暂不触发。
 - 全局战场事件补充：新增 `RegisterBGEvent`、`ClearBattleGroundEvents`，并接入战场创建、开始、结束和销毁前事件；新增 `BattleGround` 对象封装，当前 `BattleGroundMethods.h` 参考方法差异为 `ref=17 target=19 missing=0`，支持 `shots` 和返回取消函数。
 - 全局工单事件补充：新增 `RegisterTicketEvent`、`ClearTicketEvents`，并接入工单创建、玩家更新文本、关闭事件；新增 `Ticket` 对象封装，当前 `TicketMethods.h` 参考方法差异为 `ref=25 target=25 missing=0`。Turtle 1.12 没有独立的自动 resolve 核心流程，`4` 号 resolve 事件当前会在 Lua 调用 `ticket:SetResolvedBy()` 或 `ticket:SetCompleted()` 时触发。
+- GameObject 破坏/受伤事件补充：`RegisterGameObjectEvent(entry, 7, ...)` / `8` 已接入法术把 GameObject 切换到 destroyed/alternative 状态的真实路径，参数为 `(event, go, attacker)`。Turtle 1.12 没有 3.3.5 的可破坏建筑血量系统，所以 `8` 只会在这些显式破坏动作前作为兼容受伤事件触发，不代表持续扣血。
 - 全局出租路径函数补充：新增 `AddTaxiPath(waypoints, mountA, mountH[, price[, pathId]])`，会在运行时创建临时 TaxiNode、TaxiPath 和 TaxiPathNode 数据，并返回可传给 `player:StartTaxi(pathId)` 的路径 ID。Lua 的 `Player:StartTaxi()` 当前按脚本入口跳过已知飞行点检查，以便自定义路径可直接使用。
 - SpellInfo 3.3.5 参考方法名补齐：`HasAreaAuraEffect`、`IsAffectingArea`、`IsTargetingArea`、`NeedsExplicitUnitTarget`、`GetSpellSpecific`、`GetDispelMask`、`CheckTarget`、`CheckExplicitTarget` 等。当前 `SpellInfoMethods.h` 参考方法差异为 `missing=0`，其中部分检查按 Turtle 1.12 能力做兼容近似。
 - SpellEntry 旧接口兼容补齐：`SpellEntryMethods.h` 的 92 个参考方法名已经并入 `SpellInfo` 元表，当前差异扫描为 `ref=92 target=165 missing=0`。本批补上了 `GetSpellName`、`GetDurationIndex`、`GetManaCostPerlevel`、`GetManaPerSecond`、`GetEquippedItemClass`、`GetEffectRealPointsPerLevel`、`GetEffectRadiusIndex`、`GetEffectDamageMultiplier`、`GetEffectBonusMultiplier`、`GetTotemCategory`、`GetAreaGroupId`、`GetRuneCostID` 等兼容入口；WotLK 专属字段按 Turtle 1.12 能力返回 `0` 或全 0 table。
@@ -2678,7 +2679,7 @@ end
 - 公会创建、成员、公告、信息、解散、原生日志，以及 Turtle 自定义公会银行金钱/物品/日志事件。
 - NPC 战斗前拦截、进入/离开战斗、死亡、重生、AI Update、召唤、召唤物死亡/消失。
 - 按模板 entry 绑定的 Creature 事件，以及按 `ObjectGuid + instanceId` 绑定的唯一 Creature 事件。
-- Creature / GameObject / Item 的任务、Gossip、使用入口。
+- Creature / GameObject / Item 的任务、Gossip、使用入口，以及 GameObject 显式破坏/兼容受伤事件。
 - Item DummyEffect、Expire、Remove 事件。
 - 动态 `Spell` 对象和 Prepare / Cast / Cancel 施法事件。
 - `Quest` 对象。

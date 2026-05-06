@@ -25235,6 +25235,32 @@ void TurtleLuaEngine::OnGameObjectRemove(GameObject* go)
     CallEntryEvent(_gameObjectEvents, go->GetEntry(), GAMEOBJECT_EVENT_ON_REMOVE, 2);
 }
 
+void TurtleLuaEngine::OnGameObjectDestroyed(GameObject* go, WorldObject* attacker)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !go)
+        return;
+
+    lua_pushinteger(_state, GAMEOBJECT_EVENT_ON_DESTROYED);
+    PushGameObject(go);
+    PushWorldObjectValue(_state, this, attacker);
+    CallEntryEvent(_gameObjectEvents, go->GetEntry(), GAMEOBJECT_EVENT_ON_DESTROYED, 3);
+}
+
+void TurtleLuaEngine::OnGameObjectDamaged(GameObject* go, WorldObject* attacker)
+{
+    std::lock_guard<std::recursive_mutex> guard(_lock);
+
+    if (!IsEnabled() || !go)
+        return;
+
+    lua_pushinteger(_state, GAMEOBJECT_EVENT_ON_DAMAGED);
+    PushGameObject(go);
+    PushWorldObjectValue(_state, this, attacker);
+    CallEntryEvent(_gameObjectEvents, go->GetEntry(), GAMEOBJECT_EVENT_ON_DAMAGED, 3);
+}
+
 bool TurtleLuaEngine::OnGameObjectDummyEffect(WorldObject* caster, uint32 spellId, uint32 effIndex, GameObject* target)
 {
     std::lock_guard<std::recursive_mutex> guard(_lock);

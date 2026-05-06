@@ -223,6 +223,8 @@ enum TurtleLuaGameObjectEvents
     GAMEOBJECT_EVENT_ON_QUEST_ACCEPT = 4,
     GAMEOBJECT_EVENT_ON_QUEST_REWARD = 5,
     GAMEOBJECT_EVENT_ON_DIALOG_STATUS = 6,
+    GAMEOBJECT_EVENT_ON_DESTROYED = 7,
+    GAMEOBJECT_EVENT_ON_DAMAGED = 8,
     GAMEOBJECT_EVENT_ON_LOOT_STATE_CHANGE = 9,
     GAMEOBJECT_EVENT_ON_GO_STATE_CHANGED = 10,
     GAMEOBJECT_EVENT_ON_ADD = 12,
@@ -441,6 +443,8 @@ public:
     void OnGameObjectSpawn(GameObject* go);
     void OnGameObjectAdd(GameObject* go);
     void OnGameObjectRemove(GameObject* go);
+    void OnGameObjectDestroyed(GameObject* go, WorldObject* attacker);
+    void OnGameObjectDamaged(GameObject* go, WorldObject* attacker);
     bool OnGameObjectDummyEffect(WorldObject* caster, uint32 spellId, uint32 effIndex, GameObject* target);
     bool OnItemUse(Player* player, Item* item, SpellCastTargets& targets);
     bool OnItemDummyEffect(WorldObject* caster, uint32 spellId, uint32 effIndex, Item* target);
