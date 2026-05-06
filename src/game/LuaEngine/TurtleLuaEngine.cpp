@@ -2847,6 +2847,23 @@ int LuaGetSpellInfo(lua_State* state)
     return 1;
 }
 
+int LuaLookupEntry(lua_State* state)
+{
+    std::string dbcName = luaL_checkstring(state, 1);
+    uint32 id = static_cast<uint32>(luaL_checkinteger(state, 2));
+
+    if (dbcName == "Spell" || dbcName == "SpellEntry")
+    {
+        PushSpellInfo(state, sSpellMgr.GetSpellEntry(id));
+        return 1;
+    }
+
+    if (dbcName == "GemProperties")
+        return 0;
+
+    return luaL_error(state, "Invalid DBC name: %s", dbcName.c_str());
+}
+
 int LuaGetGuildById(lua_State* state)
 {
     auto* engine = GetEngine(state);
@@ -15570,6 +15587,7 @@ void TurtleLuaEngine::RegisterGlobals()
     lua_register(_state, "GetGOInfo", &LuaGetGameObjectTemplate);
     lua_register(_state, "GetSpellInfo", &LuaGetSpellInfo);
     lua_register(_state, "GetSpellEntry", &LuaGetSpellInfo);
+    lua_register(_state, "LookupEntry", &LuaLookupEntry);
     lua_register(_state, "GetGuildById", &LuaGetGuildById);
     lua_register(_state, "GetGuildByName", &LuaGetGuildByName);
     lua_register(_state, "GetGuildByLeaderGUID", &LuaGetGuildByLeaderGUID);
