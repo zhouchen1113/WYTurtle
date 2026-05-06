@@ -12894,10 +12894,20 @@ int GroupSetMemberFlag(lua_State* state)
 
     if (flag & 0x01)
         group->SetAssistant(guid, apply);
-    if (apply && (flag & 0x02))
-        group->SetMainTank(guid);
-    if (apply && (flag & 0x04))
-        group->SetMainAssistant(guid);
+    if (flag & 0x02)
+    {
+        if (apply)
+            group->SetMainTank(guid);
+        else if (group->GetMainTankGuid() == guid)
+            group->SetMainTank(ObjectGuid());
+    }
+    if (flag & 0x04)
+    {
+        if (apply)
+            group->SetMainAssistant(guid);
+        else if (group->GetMainAssistantGuid() == guid)
+            group->SetMainAssistant(ObjectGuid());
+    }
 
     return 0;
 }

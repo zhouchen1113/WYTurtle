@@ -2354,7 +2354,7 @@ group:SendPacket(packet)
 - `group:GetLeaderGUID()` / `group:GetMemberGUID(name)` 返回 `ObjectGuid` 对象，需要低位数字时调用 `guid:GetGUIDLow()`。
 - `group:GetGUID()` 在 Turtle 1.12 中返回队伍数据库 ID 数字；1.12 核心没有 3.3.5 那种独立 Group GUID。
 - `group:GetGroupType()` 按 Eluna 兼容值返回：普通 `0`，战场位 `1`，团队位 `2`，LFG 位 `8`，可能叠加。
-- `group:SetMemberFlag()` 支持 `0x01` 助手开关；`0x02` 主坦克和 `0x04` 主助理当前只支持设置，不支持用 `apply=false` 清空。
+- `group:SetMemberFlag()` 支持 `0x01` 助手、`0x02` 主坦克和 `0x04` 主助理；`apply=false` 会清空目标玩家身上的对应标记。
 - `group:SendPacket(packet)` 会把 `WorldPacket` 广播给队伍成员；可选参数仍按当前 C++ 入口支持 `ignorePlayersInBg` 和忽略 GUID。
 
 ## Roll 方法
