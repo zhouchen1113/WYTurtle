@@ -23,6 +23,7 @@ class Guild;
 class Map;
 class Spell;
 class Roll;
+class InstanceData;
 class WorldPacket;
 class SpellCastTargets;
 class ObjectGuid;
@@ -355,6 +356,7 @@ private:
     void RegisterGroupMetatable();
     void RegisterGuildMetatable();
     void RegisterMapMetatable();
+    void RegisterInstanceDataMetatable();
     void RegisterAuraMetatable();
     void RegisterSpellMetatable();
     void RegisterSpellInfoMetatable();

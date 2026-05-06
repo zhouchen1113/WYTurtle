@@ -68,6 +68,7 @@ constexpr char const* QUEST_METATABLE = "Turtle.Quest";
 constexpr char const* GROUP_METATABLE = "Turtle.Group";
 constexpr char const* GUILD_METATABLE = "Turtle.Guild";
 constexpr char const* MAP_METATABLE = "Turtle.Map";
+constexpr char const* INSTANCEDATA_METATABLE = "Turtle.InstanceData";
 constexpr char const* AURA_METATABLE = "Turtle.Aura";
 constexpr char const* SPELL_METATABLE = "Turtle.Spell";
 constexpr char const* SPELLINFO_METATABLE = "Turtle.SpellInfo";
@@ -169,6 +170,11 @@ struct LuaGuild
 struct LuaMap
 {
     Map* map;
+};
+
+struct LuaInstanceData
+{
+    InstanceData* data;
 };
 
 struct LuaAura
@@ -387,6 +393,12 @@ Map* CheckMap(lua_State* state, int index)
     return holder ? holder->map : nullptr;
 }
 
+InstanceData* CheckInstanceData(lua_State* state, int index)
+{
+    auto* holder = static_cast<LuaInstanceData*>(luaL_checkudata(state, index, INSTANCEDATA_METATABLE));
+    return holder ? holder->data : nullptr;
+}
+
 Aura* CheckAura(lua_State* state, int index)
 {
     auto* holder = static_cast<LuaAura*>(luaL_checkudata(state, index, AURA_METATABLE));
@@ -487,6 +499,21 @@ void PushRollValue(lua_State* state, Roll const* roll, Item* item, uint32 count)
         holder->playerVotes.emplace_back(vote.first, static_cast<uint32>(vote.second));
 
     luaL_getmetatable(state, ROLL_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
+void PushInstanceDataValue(lua_State* state, InstanceData* data)
+{
+    if (!data)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    auto* holder = static_cast<LuaInstanceData*>(lua_newuserdata(state, sizeof(LuaInstanceData)));
+    holder->data = data;
+
+    luaL_getmetatable(state, INSTANCEDATA_METATABLE);
     lua_setmetatable(state, -2);
 }
 
@@ -11383,8 +11410,8 @@ int MapSetWeather(lua_State* state)
 
 int MapGetInstanceData(lua_State* state)
 {
-    (void)CheckMap(state, 1);
-    lua_pushnil(state);
+    Map* map = CheckMap(state, 1);
+    PushInstanceDataValue(state, map ? map->GetInstanceData() : nullptr);
     return 1;
 }
 
@@ -11393,6 +11420,120 @@ int MapSaveInstanceData(lua_State* state)
     Map* map = CheckMap(state, 1);
     if (map && map->GetInstanceData())
         map->GetInstanceData()->SaveToDB();
+    return 0;
+}
+
+int InstanceDataGetMap(lua_State* state)
+{
+    TurtleLuaEngine* engine = GetEngine(state);
+    InstanceData* data = CheckInstanceData(state, 1);
+    if (engine && data)
+        engine->PushMap(data->instance);
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int InstanceDataGetMapId(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    lua_pushinteger(state, data && data->instance ? data->instance->GetId() : 0);
+    return 1;
+}
+
+int InstanceDataGetInstanceId(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    lua_pushinteger(state, data && data->instance ? data->instance->GetInstanceId() : 0);
+    return 1;
+}
+
+int InstanceDataIsEncounterInProgress(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    lua_pushboolean(state, data && data->IsEncounterInProgress());
+    return 1;
+}
+
+int InstanceDataGetData(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, data ? data->GetData(key) : 0);
+    return 1;
+}
+
+int InstanceDataSetData(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    uint32 value = static_cast<uint32>(luaL_checkinteger(state, 3));
+    if (data)
+        data->SetData(key, value);
+    return 0;
+}
+
+int InstanceDataGetData64(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    lua_pushinteger(state, data ? static_cast<lua_Integer>(data->GetData64(key)) : 0);
+    return 1;
+}
+
+int InstanceDataSetData64(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    uint64 value = static_cast<uint64>(luaL_checkinteger(state, 3));
+    if (data)
+        data->SetData64(key, value);
+    return 0;
+}
+
+int InstanceDataGetGuid(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    PushObjectGuidValue(state, data ? data->GetGuid(key) : ObjectGuid());
+    return 1;
+}
+
+int InstanceDataSetGuid(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    uint32 key = static_cast<uint32>(luaL_checkinteger(state, 2));
+    ObjectGuid guid = CheckObjectGuidValue(state, 3);
+    if (data)
+        data->SetGuid(key, guid);
+    return 0;
+}
+
+int InstanceDataSave(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    char const* saved = data ? data->Save() : nullptr;
+    if (saved)
+        lua_pushstring(state, saved);
+    else
+        lua_pushnil(state);
+    return 1;
+}
+
+int InstanceDataLoad(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    char const* saved = luaL_checkstring(state, 2);
+    if (data)
+        data->Load(saved);
+    return 0;
+}
+
+int InstanceDataSaveToDB(lua_State* state)
+{
+    InstanceData* data = CheckInstanceData(state, 1);
+    if (data)
+        data->SaveToDB();
     return 0;
 }
 
@@ -13896,6 +14037,7 @@ void TurtleLuaEngine::OpenState()
     RegisterGroupMetatable();
     RegisterGuildMetatable();
     RegisterMapMetatable();
+    RegisterInstanceDataMetatable();
     RegisterAuraMetatable();
     RegisterSpellMetatable();
     RegisterSpellInfoMetatable();
@@ -15683,6 +15825,32 @@ void TurtleLuaEngine::RegisterMapMetatable()
     SetMethod(_state, "SetWeather", &MapSetWeather);
     SetMethod(_state, "GetInstanceData", &MapGetInstanceData);
     SetMethod(_state, "SaveInstanceData", &MapSaveInstanceData);
+    lua_setfield(_state, -2, "__index");
+
+    lua_pop(_state, 1);
+}
+
+void TurtleLuaEngine::RegisterInstanceDataMetatable()
+{
+    luaL_newmetatable(_state, INSTANCEDATA_METATABLE);
+
+    lua_newtable(_state);
+    SetMethod(_state, "GetMap", &InstanceDataGetMap);
+    SetMethod(_state, "GetMapId", &InstanceDataGetMapId);
+    SetMethod(_state, "GetInstanceId", &InstanceDataGetInstanceId);
+    SetMethod(_state, "GetInstanceID", &InstanceDataGetInstanceId);
+    SetMethod(_state, "IsEncounterInProgress", &InstanceDataIsEncounterInProgress);
+    SetMethod(_state, "GetData", &InstanceDataGetData);
+    SetMethod(_state, "SetData", &InstanceDataSetData);
+    SetMethod(_state, "GetData64", &InstanceDataGetData64);
+    SetMethod(_state, "SetData64", &InstanceDataSetData64);
+    SetMethod(_state, "GetGuid", &InstanceDataGetGuid);
+    SetMethod(_state, "GetGUID", &InstanceDataGetGuid);
+    SetMethod(_state, "SetGuid", &InstanceDataSetGuid);
+    SetMethod(_state, "SetGUID", &InstanceDataSetGuid);
+    SetMethod(_state, "Save", &InstanceDataSave);
+    SetMethod(_state, "Load", &InstanceDataLoad);
+    SetMethod(_state, "SaveToDB", &InstanceDataSaveToDB);
     lua_setfield(_state, -2, "__index");
 
     lua_pop(_state, 1);

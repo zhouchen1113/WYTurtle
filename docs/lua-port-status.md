@@ -5,7 +5,7 @@
 
 当前实现不是把 AzerothCore 3.3.5 的 Eluna 原样照搬，而是做了一套适配
 Turtle 1.12 核心结构的 Lua 兼容层。它已经可以加载自定义 Lua 脚本，并支持
-常用事件、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、Roll、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
+常用事件、Gossip、任务对象、物品模板、生物模板、GameObject 模板、法术模板、施法目标、ObjectGuid、WorldPacket、Roll、InstanceData、玩家消息/提示发送、数据库访问、定时器和大量常用对象方法。
 
 ## 当前实现位置
 
@@ -58,6 +58,7 @@ E:\TurtleBY
 - Item 兼容补齐：`GetItemLink`、`GetRandomSuffix`、`IsCurrencyToken`、`IsWeaponVellum`、`IsArmorVellum`、`IsRefundExpired`。
 - Quest 兼容补齐：`HasFlag`、`IsDaily`、`GetNextQuestId`、`GetPrevQuestId`、`GetNextQuestInChain`、`GetType`。
 - Map 兼容补齐：`IsArena`、`IsEmpty`、`IsHeroic`、`GetDifficulty`、`GetHeight`、`GetAreaId`、`GetCreatures`、`GetCreaturesByAreaId`、`SetWeather`、`GetInstanceData`、`SaveInstanceData`。
+- InstanceData 基础对象封装：`Map:GetInstanceData()` 现在会返回 Turtle 副本脚本对象，支持 `GetData` / `SetData` / `GetData64` / `SetData64` / `GetGuid` / `SetGuid` / `SaveToDB` 等核心真实入口。
 - GameObject 兼容补齐：`HasQuest`、`IsTransport`、`IsActive`、`IsDestructible`、`GetLootRecipient`、`GetLootRecipientGroup`、`AddLoot`、`SaveToDB`、`RemoveFromWorld`、`UseDoorOrButton`、`Despawn`、`SetRespawnTime`。
 - Spell 兼容补齐：`IsAutoRepeat`、`SetAutoRepeat`、`Cast`、`Finish`、`GetDuration`、`GetReagentCost`、`GetTargetDest`。
 - Group 兼容补齐：`GetGUID`、`GetMemberGUID`、`GetGroupType`、`IsLFGGroup`、`IsAssistant`、`SameSubGroup`、`HasFreeSlotSubGroup`、`SetLeader`、`AddMember`、`RemoveMember`、`Disband`、`ConvertToRaid`、`SetMembersGroup`、`SetTargetIcon`、`SetMemberFlag`、`SendPacket`。
@@ -2161,7 +2162,36 @@ Map 兼容说明：
 - `GetAreaId(x, y, z)` 读取当前坐标所在 Area，失败时返回 `0`。
 - `GetCreatures()` / `GetCreaturesByAreaId(areaId)` 当前只枚举副本地图里已经加载的 Creature；普通大陆地图对象仓库没有公开枚举入口，所以会返回空表。
 - `SetWeather(zoneId, weatherType, grade, permanent)` 会直接改变天气。`weatherType` 使用核心天气类型，常见值为 `0` 晴天、`1` 雨、`2` 雪、`3` 沙尘。
-- `GetInstanceData()` 当前返回 `nil`，还没有封装 3.3.5 Eluna 的 InstanceData Lua table。`SaveInstanceData()` 会在当前地图存在实例数据时保存。
+- `GetInstanceData()` 当前返回 Turtle 1.12 的副本脚本对象，不是 3.3.5 Eluna 的纯 Lua table；没有副本脚本时返回 `nil`。`SaveInstanceData()` 会在当前地图存在实例数据时保存。
+
+## InstanceData 方法
+
+`map:GetInstanceData()` 会返回当前地图的副本脚本对象，没有副本脚本时返回 `nil`。这个对象映射的是 Turtle/MaNGOS 核心 `InstanceData`，适合读取和修改副本脚本里暴露的数字状态。
+
+```lua
+local data = map:GetInstanceData()
+if data then
+    data:GetMap()
+    data:GetMapId()
+    data:GetInstanceId()
+    data:IsEncounterInProgress()
+    data:GetData(key)
+    data:SetData(key, value)
+    data:GetData64(key)
+    data:SetData64(key, value)
+    data:GetGuid(key)
+    data:SetGuid(key, guid)
+    data:Save()
+    data:Load(savedString)
+    data:SaveToDB()
+end
+```
+
+说明：
+
+- `GetData` / `SetData` 和 `GetData64` / `SetData64` 直接调用副本脚本实现；如果该副本脚本没有重写这些方法，核心默认返回 `0` 或不执行。
+- `GetGuid(key)` 返回 `ObjectGuid` 对象；`SetGuid(key, guid)` 可以传 `ObjectGuid`、对象本身或玩家低位 GUID。
+- `Save()` 返回副本脚本序列化字符串；`Load(savedString)` 会把字符串重新交给副本脚本解析，属于高级入口，普通脚本更建议只调用 `SaveToDB()`。
 
 ## 当前限制
 
@@ -2183,6 +2213,7 @@ Map 兼容说明：
 - `ObjectGuid` GUID 值对象。
 - `ChatHandler` 命令处理器基础对象。
 - `Roll` 队伍掷骰结果快照对象。
+- `InstanceData` 副本脚本基础对象。
 - `Aura` 光环实例基础对象。
 - 在线玩家列表、在线人数和已加载地图查询。
 - 全局定时器和对象绑定定时器。
