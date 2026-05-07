@@ -22,6 +22,7 @@ permissions:
 env:
   BUILD_TYPE: Release
   MYSQL_VERSION: 5.7.44
+  OPENSSL_VERSION: 1_1_1w
 
 jobs:
   build:
@@ -67,9 +68,9 @@ jobs:
         with:
           path: |
             ${{ env.VCPKG_ROOT }}
-          key: wyturtle-vcpkg-windows-x64-ace-openssl-${{ hashFiles('.github/workflows/windows-release.yml') }}
+          key: wyturtle-vcpkg-windows-x64-ace-${{ hashFiles('.github/workflows/windows-release.yml') }}
           restore-keys: |
-            wyturtle-vcpkg-windows-x64-ace-openssl-
+            wyturtle-vcpkg-windows-x64-ace-
 
       - name: Ensure vcpkg
         shell: pwsh
@@ -85,10 +86,10 @@ jobs:
           }
           & "$env:VCPKG_ROOT\vcpkg.exe" version
 
-      - name: Install ACE and OpenSSL
+      - name: Install ACE
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install ace:x64-windows openssl:x64-windows --clean-after-build
+          & "$env:VCPKG_ROOT\vcpkg.exe" install ace:x64-windows --clean-after-build
 
       - name: Prepare Windows dependencies
         shell: pwsh
@@ -96,7 +97,8 @@ jobs:
           .\.github\scripts\prepare-windows-deps.ps1 `
             -SourceDir "$env:GITHUB_WORKSPACE" `
             -VcpkgRoot "$env:VCPKG_ROOT" `
-            -MySqlVersion "$env:MYSQL_VERSION"
+            -MySqlVersion "$env:MYSQL_VERSION" `
+            -OpenSslVersion "$env:OPENSSL_VERSION"
 
       - name: Configure CMake
         shell: pwsh

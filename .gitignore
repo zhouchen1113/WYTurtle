@@ -5,7 +5,6 @@
 /dist/
 /tools/
 /lua_scripts/
-/.vcpkg/
 
 # Visual Studio / CMake generated files
 /.vs/
