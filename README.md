@@ -1,7 +1,5 @@
 # WYTurtle
-
-WYTurtle 是一份基于 Turtle/MaNGOS 1.12 服务端源码整理的工程，目标客户端版本为 `CLIENT_BUILD_1_12_1`。
-
+## 希望我这个项目能抛砖引玉，如果你使用了这个源码，有好的修改的能提交到这个仓库，大家一起将这个仓库做到更好！
 本项目面向 Windows 环境下的编译、部署和二次开发。当前工程默认启用 Lua 脚本兼容层，用于在 Turtle 1.12 核心上运行部分从 3.3.5 Eluna 迁移过来的自定义 Lua 功能。
 
 Lua 移植状态记录：
@@ -24,28 +22,6 @@ README.md            项目说明和 Windows 编译教程
 
 ## 编译前说明
 
-本仓库主要保存源码、SQL、文档和可提交的头文件。Windows 编译需要的 `.lib`、`.dll`、数据库大包等二进制文件通常不会提交到 Git 仓库。
-
-因此，其他人拿到仓库后，需要另外准备：
-
-```text
-Visual Studio 2022 C++ 编译环境
-CMake
-Git
-ACE
-MySQL / OpenSSL / Zlib Windows 依赖库
-MySQL Server 5.7
-匹配该核心的 world 基础数据库
-```
-
-如果需要把项目分享给其他人，建议同时提供：
-
-```text
-1. Git 仓库地址
-2. Windows 第三方依赖库压缩包
-3. ACE 准备说明，或已经编译好的 ACE 目录
-4. world 基础数据库来源说明
-```
 
 ## 示例目录规划
 
@@ -362,7 +338,7 @@ Build files have been written to: D:/WYTurtle/build/relwithdebinfo
 cmake --build "D:\WYTurtle\build\relwithdebinfo" --target INSTALL
 ```
 
-第一次完整编译可能需要 10 到 40 分钟。编译完成后，输出会安装到：
+第一次完整编译可能需要 3 到 10 分钟。编译完成后，输出会安装到：
 
 ```text
 D:\WYTurtle\server
